@@ -1,0 +1,19 @@
+name: macOS
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: ./scripts/test.sh
+      - name: Build application
+        run: ./scripts/build-app.sh --universal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CopyTaste-macOS
+          path: dist/CopyTaste.app
