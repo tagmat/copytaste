@@ -15,8 +15,27 @@ enum DemoContent {
             ClipEntry(kind: .link, text: "https://www.swift.org/documentation/", sourceName: "Safari", sourceBundleID: "com.apple.Safari", createdAt: now.addingTimeInterval(-3600)),
             ClipEntry(kind: .text, text: "Monday\n• Refine the collection\n• Review the small details\n• Make something worth keeping", sourceName: "Notes", sourceBundleID: "com.apple.Notes", createdAt: now.addingTimeInterval(-7000), title: "A short list")
         ]
+        entries.append(ClipEntry(kind: .file, fileData: Data("# Notes in motion\n\n**Local** by default.\n\n```swift\nlet orbit = [\"ideas\", \"images\"]\nreturn orbit.first\n```\n".utf8), fileName: "Release notes.md", sourceName: "Finder", sourceBundleID: "com.apple.finder", createdAt: now.addingTimeInterval(-3_800)))
+        entries.append(ClipEntry(kind: .file, fileData: samplePDF(), fileName: "Project notes.pdf", sourceName: "Finder", sourceBundleID: "com.apple.finder", createdAt: now.addingTimeInterval(-4_000)))
         entries[0].lastUsedAt = now
         return VaultSnapshot(entries: entries, collections: [collection])
+    }
+
+    @MainActor static func samplePDF() -> Data? {
+        let data = NSMutableData()
+        var rect = CGRect(x: 0, y: 0, width: 300, height: 400)
+        guard let consumer = CGDataConsumer(data: data), let context = CGContext(consumer: consumer, mediaBox: &rect, nil) else { return nil }
+        context.beginPDFPage(nil)
+        context.setFillColor(NSColor(calibratedWhite: 0.96, alpha: 1).cgColor); context.fill(rect)
+        context.setFillColor(NSColor(red: 0.74, green: 1, blue: 0.53, alpha: 1).cgColor)
+        context.fill(CGRect(x: 24, y: 292, width: 252, height: 78))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        ("Project notes" as NSString).draw(at: NSPoint(x: 38, y: 320), withAttributes: [.font: NSFont.systemFont(ofSize: 25, weight: .semibold), .foregroundColor: NSColor.black])
+        ("A little room for what comes next.\n\nCopyTaste by tagmat\nSynthetic preview document" as NSString).draw(in: NSRect(x: 28, y: 100, width: 244, height: 155), withAttributes: [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.darkGray])
+        NSGraphicsContext.restoreGraphicsState()
+        context.endPDFPage(); context.closePDF()
+        return data as Data
     }
 
     @MainActor private static func palette() -> Data? {

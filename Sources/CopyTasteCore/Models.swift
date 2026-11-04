@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 public enum ClipKind: String, Codable, CaseIterable, Sendable {
-    case text, link, image
+    case text, link, image, file
 }
 
 public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
@@ -10,6 +10,8 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
     public var kind: ClipKind
     public var text: String?
     public var imageData: Data?
+    public var fileData: Data?
+    public var fileName: String?
     public var sourceName: String
     public var sourceBundleID: String
     public var createdAt: Date
@@ -20,13 +22,15 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
     public var title: String?
 
     public init(id: UUID = UUID(), kind: ClipKind, text: String? = nil,
-                imageData: Data? = nil, sourceName: String, sourceBundleID: String,
+                imageData: Data? = nil, fileData: Data? = nil, fileName: String? = nil, sourceName: String, sourceBundleID: String,
                 createdAt: Date = Date(), isPinned: Bool = false,
                 collectionID: UUID? = nil, title: String? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
         self.imageData = imageData
+        self.fileData = fileData
+        self.fileName = fileName
         self.sourceName = sourceName
         self.sourceBundleID = sourceBundleID
         self.createdAt = createdAt
@@ -39,15 +43,17 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if kind == .image { return "Image" }
+        if kind == .file { return fileName ?? "File" }
         return String((text ?? "").split(separator: "\n", omittingEmptySubsequences: true).first ?? "Text")
     }
 
-    public var byteCount: Int { (text?.utf8.count ?? 0) + (imageData?.count ?? 0) }
+    public var byteCount: Int { (text?.utf8.count ?? 0) + (imageData?.count ?? 0) + (fileData?.count ?? 0) }
 
     public var fingerprint: String {
         var data = Data(kind.rawValue.utf8)
         data.append(Data((text ?? "").utf8))
         data.append(imageData ?? Data())
+        if kind == .file { data.append(Data((fileName ?? "").utf8)); data.append(0); data.append(fileData ?? Data()) }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -72,9 +78,17 @@ public enum StorageMode: String, Codable, CaseIterable, Sendable {
     case memory, encryptedLocal, encryptedFolder, iCloud
 }
 
+public enum SelectorLayout: String, Codable, CaseIterable, Sendable {
+    case pinnedAndRecent, orbit
+}
+
 public struct Preferences: Codable, Equatable, Sendable {
+    public var schemaVersion = 2
     public var captureEnabled = false
-    public var captureImages = false
+    public var captureImages = true
+    public var captureFiles = true
+    public var autoPaste = true
+    public var selectorLayout: SelectorLayout = .pinnedAndRecent
     public var retentionDays = 7
     public var maximumEntries = 300
     public var clearClipboardAfterSeconds = 45
@@ -83,4 +97,28 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var persistPinnedOnly = false
     public var customFolderPath: String?
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, captureEnabled, captureImages, captureFiles, autoPaste, selectorLayout, retentionDays, maximumEntries
+        case clearClipboardAfterSeconds, excludedBundleIDs, storageMode, persistPinnedOnly, customFolderPath
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let oldVersion = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        captureEnabled = try values.decodeIfPresent(Bool.self, forKey: .captureEnabled) ?? false
+        // Version 0.2 enables image capture; subsequent explicit opt-outs are preserved.
+        captureImages = oldVersion < 2 ? true : (try values.decodeIfPresent(Bool.self, forKey: .captureImages) ?? true)
+        autoPaste = try values.decodeIfPresent(Bool.self, forKey: .autoPaste) ?? true
+        captureFiles = try values.decodeIfPresent(Bool.self, forKey: .captureFiles) ?? true
+        selectorLayout = (try? values.decodeIfPresent(SelectorLayout.self, forKey: .selectorLayout)) ?? .pinnedAndRecent
+        retentionDays = try values.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
+        maximumEntries = try values.decodeIfPresent(Int.self, forKey: .maximumEntries) ?? 300
+        clearClipboardAfterSeconds = try values.decodeIfPresent(Int.self, forKey: .clearClipboardAfterSeconds) ?? 45
+        excludedBundleIDs = try values.decodeIfPresent(Set<String>.self, forKey: .excludedBundleIDs) ?? []
+        storageMode = try values.decodeIfPresent(StorageMode.self, forKey: .storageMode) ?? .memory
+        persistPinnedOnly = try values.decodeIfPresent(Bool.self, forKey: .persistPinnedOnly) ?? false
+        customFolderPath = try values.decodeIfPresent(String.self, forKey: .customFolderPath)
+    }
 }

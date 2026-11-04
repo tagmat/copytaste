@@ -16,16 +16,16 @@ for size in [16, 32, 128, 256, 512] {
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        NSColor(red: 36/255, green: 61/255, blue: 52/255, alpha: 1).setFill()
+        NSColor(red: 14/255, green: 18/255, blue: 22/255, alpha: 1).setFill()
         NSBezierPath(roundedRect: NSRect(x: side * 0.07, y: side * 0.07, width: side * 0.86, height: side * 0.86), xRadius: side * 0.19, yRadius: side * 0.19).fill()
-        NSColor(red: 0.88, green: 0.76, blue: 0.51, alpha: 1).setStroke()
+        NSColor(red: 0.74, green: 1.0, blue: 0.53, alpha: 1).setStroke()
         let back = NSBezierPath(roundedRect: NSRect(x: side * 0.29, y: side * 0.38, width: side * 0.40, height: side * 0.36), xRadius: side * 0.06, yRadius: side * 0.06)
         back.lineWidth = side * 0.045
         back.stroke()
-        NSColor(red: 36/255, green: 61/255, blue: 52/255, alpha: 1).setFill()
+        NSColor(red: 14/255, green: 18/255, blue: 22/255, alpha: 1).setFill()
         let front = NSBezierPath(roundedRect: NSRect(x: side * 0.39, y: side * 0.27, width: side * 0.32, height: side * 0.34), xRadius: side * 0.06, yRadius: side * 0.06)
         front.fill()
-        NSColor(red: 0.88, green: 0.76, blue: 0.51, alpha: 1).setStroke()
+        NSColor(red: 0.74, green: 1.0, blue: 0.53, alpha: 1).setStroke()
         front.lineWidth = side * 0.045
         front.stroke()
         NSGraphicsContext.restoreGraphicsState()

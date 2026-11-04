@@ -128,7 +128,9 @@ public struct CloudVault: Sendable {
             safe.entries.removeAll { entry in
                 policy.isExcluded(entry.sourceBundleID) || entry.sourceBundleID.isEmpty ||
                 (entry.text.map { policy.rejection(forText: $0) != nil } ?? false) ||
-                entry.byteCount > (entry.kind == .image ? CapturePolicy.maxImageBytes : CapturePolicy.maxTextBytes)
+                (entry.kind == .file && (entry.fileData == nil || entry.fileName == nil ||
+                    policy.rejection(forFile: entry.fileData ?? Data(), name: entry.fileName ?? "") != nil)) ||
+                entry.byteCount > (entry.kind == .file ? CapturePolicy.maxFileBytes : (entry.kind == .image ? CapturePolicy.maxImageBytes : CapturePolicy.maxTextBytes))
             }
             let pruned = History.pruned(safe, preferences: preferences)
             merged.recordChanges(from: merged.snapshot, to: pruned)

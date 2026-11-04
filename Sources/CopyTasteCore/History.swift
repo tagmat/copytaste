@@ -40,7 +40,7 @@ public enum History {
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return entries }
         return entries.filter { entry in
-            let haystack = [entry.title, entry.text, entry.sourceName].compactMap { $0 }.joined(separator: " ")
+            let haystack = [entry.title, entry.text, entry.fileName, entry.sourceName].compactMap { $0 }.joined(separator: " ")
             return words.allSatisfy { haystack.localizedStandardContains($0) }
         }
     }

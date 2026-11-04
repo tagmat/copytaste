@@ -5,144 +5,132 @@ import Carbon
 @main
 struct CopyTasteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = AppModel(demo: CommandLine.arguments.contains("--demo"))
-
     var body: some Scene {
-        Window("CopyTaste", id: "history") {
-            ContentView(model: model)
-                .frame(minWidth: 980, minHeight: 620)
-                .onAppear { delegate.model = model }
-                .preferredColorScheme(.light)
-        }
-        .defaultSize(width: 1180, height: 760)
-        .windowStyle(.hiddenTitleBar)
-        .commands { HistoryCommands(model: delegate.commandModel ?? model, delegate: delegate) }
-    }
-}
-
-struct HistoryCommands: Commands {
-    @ObservedObject var model: AppModel
-    let delegate: AppDelegate
-    var body: some Commands {
-            CommandGroup(replacing: .newItem) { }
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings…") { (delegate.activeCommandModel ?? model).showSettings = true }
-                    .keyboardShortcut(",")
-            }
-            CommandMenu("History") {
-                Button("Show Picker") { delegate.showPicker() }.keyboardShortcut("v", modifiers: [.command, .shift])
-                Button(model.isCapturing ? "Pause Capture" : "Resume Capture") { (delegate.activeCommandModel ?? model).toggleCapture() }
-                    .keyboardShortcut("p", modifiers: [.command, .shift])
-                    .disabled(model.isLocked || model.isDemo)
-                Button("Lock History") { (delegate.activeCommandModel ?? model).lock() }.keyboardShortcut("l", modifiers: [.command, .shift])
-                Divider()
-                Button("Copy Selected") {
-                    let active = delegate.activeCommandModel ?? model
-                    if let item = active.selectedEntry { active.copy(item) }
+        Settings { SettingsView(model: delegate.model, onShowPicker: { delegate.showPicker() }) }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Advanced Settings…") { delegate.showAdvancedSettings() }.keyboardShortcut(",")
                 }
-                    .keyboardShortcut(.return, modifiers: .command).disabled(model.selectedEntry == nil)
-            }
-            CommandGroup(after: .help) {
-                Button("Explore Sample History") { delegate.showDemo() }
             }
     }
 }
 
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, NSWindowDelegate {
-    weak var model: AppModel?
-    @Published var commandModel: AppModel?
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+    let model = AppModel(demo: CommandLine.arguments.contains("--demo") || Bundle.main.object(forInfoDictionaryKey: "CopyTastePreviewMode") as? Bool == true)
     private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
     private var hotKey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
-    private var demoController: NSWindowController?
-    private var demoModel: AppModel?
-    private var pickerController: PickerController?
-    private var demoPickerController: PickerController?
-    private var focusObservers: [NSObjectProtocol] = []
-    var activeCommandModel: AppModel? {
-        if demoPickerController?.isKey == true || (NSApp.isActive && demoController?.window?.isKeyWindow == true) { return demoModel }
-        return model
-    }
+    private var picker: PickerController?
+    private var samplePicker: PickerController?
+    private var sampleModel: AppModel?
+    private var settingsController: NSWindowController?
+    private var activationObserver: NSObjectProtocol?
+    private var lastDestination: PasteDestination?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
-                     NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
-            focusObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.commandModel = self?.activeCommandModel }
-            })
+        NSApp.setActivationPolicy(.accessory)
+        rememberDestination()
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.rememberDestination() }
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "square.on.square", accessibilityDescription: "CopyTaste")
         item.button?.target = self
         item.button?.action = #selector(statusClicked)
         statusItem = item
+        popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .darkAqua)
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
             guard let context else { return OSStatus(eventNotHandledErr) }
-            MainActor.assumeIsolated {
-                Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue().showPicker()
-            }
+            MainActor.assumeIsolated { Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue().showPicker() }
             return noErr
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-        let status = RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(cmdKey | shiftKey),
-            EventHotKeyID(signature: 0x43545950, id: 1), GetApplicationEventTarget(), 0, &hotKey)
-        if status != noErr {
-            Task { @MainActor [weak self] in
-                self?.model?.errorMessage = "The ⇧⌘V shortcut is in use. Open CopyTaste from the menu bar instead."
-            }
+        let isPreview = Bundle.main.object(forInfoDictionaryKey: "CopyTastePreviewMode") as? Bool == true
+        let result = isPreview ? noErr : RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(cmdKey | shiftKey), EventHotKeyID(signature: 0x43545950, id: 1),
+            GetApplicationEventTarget(), 0, &hotKey)
+        if result != noErr { model.errorMessage = "The ⇧⌘V shortcut is already in use. Open the selector from the menu bar." }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            if self.model.isDemo { self.showPicker() }
+            else if !self.model.preferences.captureEnabled { self.showPopover() }
         }
     }
 
-    @objc private func statusClicked() { showHistory() }
-    func showHistory() {
-        commandModel = model
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first { $0.title == "CopyTaste" }?.makeKeyAndOrderFront(nil)
+    private func rememberDestination() {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.bundleIdentifier != "net.tagmat.copytaste", app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        lastDestination = PasteDestination(processID: app.processIdentifier, name: app.localizedName ?? "your app")
     }
+
+    @objc private func statusClicked() {
+        if popover.isShown { popover.performClose(nil) } else { showPopover() }
+    }
+
+    func showPopover() {
+        rememberDestination()
+        picker?.dismiss(immediately: true)
+        samplePicker?.dismiss(immediately: true)
+        guard let button = statusItem?.button else { return }
+        popover.contentViewController = NSHostingController(rootView: QuickSettingsView(model: model,
+            onPicker: { [weak self] in self?.showPicker() }, onAdvanced: { [weak self] in self?.showAdvancedSettings() },
+            onSamples: { [weak self] in self?.showSamples() }))
+        if let view = popover.contentViewController?.view { popover.contentSize = NSSize(width: 340, height: view.fittingSize.height) }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
     func showPicker() {
-        guard let active = activeCommandModel ?? model else { return }
-        if active.isDemo {
-            if demoPickerController == nil { demoPickerController = PickerController(model: active) }
-            demoPickerController?.onBecameKey = { [weak self, weak active] in self?.commandModel = active }
-            demoPickerController?.toggle()
-            return
+        rememberDestination()
+        popover.performClose(nil)
+        if picker == nil {
+            picker = PickerController(model: model)
+            picker?.onSettings = { [weak self] in self?.showPopover() }
+            picker?.onPermissionRequired = { [weak self] in self?.showPopover() }
         }
-        let model = active
-        if model.isLocked { showHistory(); return }
-        if pickerController == nil { pickerController = PickerController(model: model) }
-        pickerController?.onBecameKey = { [weak self, weak model] in self?.commandModel = model }
-        commandModel = model
-        pickerController?.toggle()
+        picker?.toggle(destination: lastDestination)
     }
-    func showDemo() {
-        if let demoController { demoController.showWindow(nil); demoController.window?.makeKeyAndOrderFront(nil); return }
-        let demo = AppModel(demo: true)
-        demoModel = demo
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "CopyTaste Demo"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 980, height: 620)
-        window.delegate = self
-        window.contentView = NSHostingView(rootView: ContentView(model: demo).preferredColorScheme(.light))
-        window.center()
-        let controller = NSWindowController(window: window)
-        demoController = controller
-        controller.showWindow(nil)
+
+    func showSamples() {
+        popover.performClose(nil)
+        picker?.dismiss(immediately: true)
+        if sampleModel == nil { sampleModel = AppModel(demo: true) }
+        guard let sampleModel else { return }
+        if samplePicker == nil {
+            samplePicker = PickerController(model: sampleModel)
+            samplePicker?.onSettings = { [weak self] in self?.showPopover() }
+        }
+        samplePicker?.toggle(destination: nil)
+    }
+
+    func showAdvancedSettings() {
+        popover.performClose(nil)
+        picker?.dismiss(immediately: true)
+        samplePicker?.dismiss(immediately: true)
+        if settingsController == nil {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 680, height: 720),
+                styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+            window.title = "CopyTaste · Advanced Settings"
+            window.minSize = NSSize(width: 600, height: 600)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = NSHostingView(rootView: SettingsView(model: model, onShowPicker: { [weak self] in self?.showPicker() }))
+            window.center()
+            settingsController = NSWindowController(window: window)
+        }
         NSApp.activate(ignoringOtherApps: true)
+        settingsController?.showWindow(nil)
+        settingsController?.window?.makeKeyAndOrderFront(nil)
     }
-    func windowDidBecomeKey(_ notification: Notification) { commandModel = demoModel }
-    func windowDidResignKey(_ notification: Notification) { commandModel = model }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showHistory()
-        return true
+        if picker?.isVisible == true { picker?.focus(); return false }
+        if samplePicker?.isVisible == true { samplePicker?.focus(); return false }
+        showPopover()
+        return false
     }
     func applicationWillTerminate(_ notification: Notification) {
-        model?.shutdown()
-        demoModel?.shutdown()
+        model.shutdown(); sampleModel?.shutdown()
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let eventHandler { RemoveEventHandler(eventHandler) }
     }

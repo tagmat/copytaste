@@ -28,6 +28,7 @@ public struct CaptureMetadata: Sendable {
 public struct CapturePolicy: Sendable {
     public static let maxTextBytes = 512 * 1_024
     public static let maxImageBytes = 4 * 1_024 * 1_024
+    public static let maxFileBytes = 8 * 1_024 * 1_024
     public static let ownBundleID = "net.tagmat.copytaste"
 
     // Match bundle families as well as helper processes and browser extensions.
@@ -67,8 +68,31 @@ public struct CapturePolicy: Sendable {
         if let claimed = metadata.claimedSourceBundleID, isExcluded(claimed) { return .excludedApplication }
         if source == Self.ownBundleID || metadata.types.contains("net.tagmat.copytaste.origin") { return .selfWrite }
         if metadata.itemCount != 1 { return .unsupported }
-        if metadata.types.contains("public.file-url") { return .unsupported }
         return nil
+    }
+
+    public static func isProtectedFileName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        let ext = (lower as NSString).pathExtension
+        let protectedExtensions: Set<String> = ["pem", "key", "p12", "pfx", "kdbx", "keychain", "keychain-db", "mobileprovision", "provisionprofile", "keystore", "jks", "asc", "gpg"]
+        return protectedExtensions.contains(ext) || ["password", "credential", "secret", "private_key", "recovery-key"].contains(where: lower.contains) || lower == ".env" || lower.hasPrefix(".env.") ||
+            lower.hasPrefix("id_rsa") || lower.hasPrefix("id_ed25519") ||
+            ["credentials", "credentials.json", "secrets.json", "secrets.yaml", "secrets.yml"].contains(lower)
+    }
+
+    public func rejection(forFile data: Data, name: String) -> RejectionReason? {
+        if data.count > Self.maxFileBytes { return .tooLarge }
+        if Self.isProtectedFileName(name) { return .secret }
+        if Self.isTextFile(name) {
+            guard let text = String(data: data, encoding: .utf8) else { return .unsupported }
+            if !text.isEmpty { return rejection(forText: text) }
+        }
+        return nil
+    }
+
+    public static func isTextFile(_ name: String) -> Bool {
+        let extensions: Set<String> = ["txt", "md", "markdown", "mdown", "csv", "tsv", "json", "yaml", "yml", "ini", "conf", "log", "xml", "html", "css", "swift", "js", "jsx", "ts", "tsx", "py", "sh", "rs", "go", "c", "cpp", "h", "java", "sql"]
+        return extensions.contains((name as NSString).pathExtension.lowercased())
     }
 
     public func rejection(forText text: String) -> RejectionReason? {

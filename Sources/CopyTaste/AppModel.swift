@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     private var syncState = SyncState()
     private var syncTimer: Timer?
     private var syncSuspended = false
+    private let transfers = TransferFileStore()
     private let defaults: UserDefaults
     private let pasteboard: NSPasteboard
     private let authenticateOwner: () async throws -> Void
@@ -96,6 +97,7 @@ final class AppModel: ObservableObject {
         case .kind(.text): "Text"
         case .kind(.link): "Links"
         case .kind(.image): "Images"
+        case .kind(.file): "Files"
         case .collection(let id): snapshot.collections.first { $0.id == id }?.name ?? "Collection"
         }
     }
@@ -186,21 +188,25 @@ final class AppModel: ObservableObject {
     private func configureMonitor() {
         monitor?.policy = CapturePolicy(excludedBundleIDs: preferences.excludedBundleIDs)
         monitor?.captureImages = preferences.captureImages
+        monitor?.captureFiles = preferences.captureFiles
         isCapturing = preferences.captureEnabled && !isLocked && !isDemo
         if isCapturing { monitor?.start() } else { monitor?.stop() }
     }
 
-    func copy(_ entry: ClipEntry) {
-        guard !isLocked else { return }
+    @discardableResult func copy(_ entry: ClipEntry) -> Bool {
+        guard !isLocked else { return false }
         let item = NSPasteboardItem()
         item.setString("CopyTaste", forType: .init("net.tagmat.copytaste.origin"))
         item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
-        if let text = entry.text { item.setString(text, forType: .string) }
-        else if let image = entry.imageData { item.setData(image, forType: .png) }
-        else { return }
+        if entry.kind == .file {
+            do { item.setString(try transfers.materialize(entry).absoluteString, forType: .fileURL) }
+            catch { errorMessage = "The file could not be prepared for pasting. \(error.localizedDescription)"; return false }
+        } else if entry.kind == .image, let image = entry.imageData { item.setData(image, forType: .png) }
+        else if let text = entry.text { item.setString(text, forType: .string) }
+        else { return false }
         clearTask?.cancel()
         pasteboard.clearContents()
-        guard pasteboard.writeObjects([item]) else { errorMessage = "The clipboard could not be updated. Try again."; return }
+        guard pasteboard.writeObjects([item]) else { errorMessage = "The clipboard could not be updated. Try again."; return false }
         ownedClipboardCount = pasteboard.changeCount
         let expectedCount = pasteboard.changeCount
         let seconds = preferences.clearClipboardAfterSeconds
@@ -212,6 +218,7 @@ final class AppModel: ObservableObject {
             }
         }
         notify(isDemo ? "Copied to the isolated demo clipboard" : "Copied · paste with ⌘V")
+        return true
     }
 
     func togglePin(_ entry: ClipEntry) {
@@ -233,6 +240,8 @@ final class AppModel: ObservableObject {
         commit(VaultSnapshot(collections: snapshot.collections), clearAll: true)
         selectedID = nil
         clearOwnedClipboard()
+        transfers.removeAll()
+        PreviewCache.shared.removeAll()
     }
 
     func createCollection(_ name: String) {
@@ -298,6 +307,22 @@ final class AppModel: ObservableObject {
         preferences.captureImages = enabled
         savePreferences()
         configureMonitor()
+    }
+
+    func setAutoPaste(_ enabled: Bool) {
+        preferences.autoPaste = enabled
+        savePreferences()
+    }
+
+    func setCaptureFiles(_ enabled: Bool) {
+        preferences.captureFiles = enabled
+        savePreferences()
+        configureMonitor()
+    }
+
+    func setSelectorLayout(_ layout: SelectorLayout) {
+        preferences.selectorLayout = layout
+        savePreferences()
     }
 
     func applyStorage(_ mode: StorageMode, pinnedOnly: Bool, syncPassphrase: String = "") async {
@@ -400,6 +425,8 @@ final class AppModel: ObservableObject {
         monitor?.stop()
         isCapturing = false
         clearOwnedClipboard()
+        transfers.removeAll()
+        PreviewCache.shared.removeAll()
         snapshot = VaultSnapshot()
         key = nil
         cloudVault = nil
@@ -421,6 +448,8 @@ final class AppModel: ObservableObject {
     func shutdown() {
         monitor?.stop(); syncTimer?.invalidate(); maintenanceTimer?.invalidate()
         clearOwnedClipboard(); snapshot = VaultSnapshot(); key = nil; cloudVault = nil; syncState = SyncState()
+        transfers.removeAll()
+        PreviewCache.shared.removeAll()
     }
 
     private func enableCloudSync(passphrase: String) async {

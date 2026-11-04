@@ -8,7 +8,7 @@ final class CapturePolicyTests: XCTestCase {
         let preferences = Preferences()
         XCTAssertEqual(preferences.storageMode, .memory)
         XCTAssertFalse(preferences.captureEnabled)
-        XCTAssertFalse(preferences.captureImages)
+        XCTAssertTrue(preferences.captureImages)
     }
 
     func testEveryPrivateMarkerBlocksCaptureBeforePayloadReading() {
@@ -48,8 +48,8 @@ final class CapturePolicyTests: XCTestCase {
         XCTAssertEqual(policy.rejection(for: CaptureMetadata(sourceBundleID: "com.apple.Notes", types: ["net.tagmat.copytaste.origin"])), .selfWrite)
     }
 
-    func testFilesAndMultipleItemsAreNotImported() {
-        XCTAssertEqual(policy.rejection(for: CaptureMetadata(sourceBundleID: "com.apple.finder", types: ["public.file-url"])), .unsupported)
+    func testFileMetadataPassesAndMultipleItemsAreRejected() {
+        XCTAssertNil(policy.rejection(for: CaptureMetadata(sourceBundleID: "com.apple.finder", types: ["public.file-url"])))
         XCTAssertEqual(policy.rejection(for: CaptureMetadata(sourceBundleID: "com.apple.Notes", itemCount: 2)), .unsupported)
         XCTAssertEqual(policy.rejection(for: CaptureMetadata(sourceBundleID: "com.apple.Notes", itemCount: 0)), .unsupported)
     }
