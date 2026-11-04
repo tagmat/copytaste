@@ -42,19 +42,28 @@ open -n dist/CopyTaste.app --args --demo
 - **Scroll or arrow keys:** move through the cards; **Return:** paste the selected clip.
 - **Option-Return:** copy without automatic paste. **Escape:** dismiss.
 - **Command-P:** pin or unpin the selection. Each card also has a pin button.
+- **Command-1 through Command-9:** paste one of the nine newest matching clips. Cards show their shortcut.
+- **Command-E:** edit the selected clip or rename an image or file. **Command-N:** create a text snippet.
+- **Command-B:** add or remove the selected text or link in the current batch. Open **Batch** to review the order, choose a separator and paste or copy it as one block.
 - Filter All, Pinned, Text, Links, Images or Files. The folder menu filters collections.
 - Right-click a card to copy, assign a collection or delete it.
+
+Change or turn off the global shortcut in **Advanced Settings → On your Mac**. The menu bar still opens the selector.
+
+Enable **Search text in images** in **Privacy & capture** to recognise text from up to 60 recent images using Vision on your Mac. Results are searchable while the selector is open. The temporary index stays in memory and is discarded with the selector. A batch holds up to 12 text clips or links. Closing the selector or switching away clears the batch and any unsaved draft.
 
 The default **Pinned + recent** layout keeps a small pin stack on the left and chronological cards on the right. Open **Show all pins** for the complete pinned collection. Choose **Single orbit** in the menu-bar bubble or advanced settings to combine everything in one chronological stream. Wheel and trackpad gestures move selection while the selector is open.
 
 Cards fan out with staggered springs, respond to pointer movement, move through depth when selection changes and fly away on choosing. Reduce Motion removes the flight, tilt and scale animations. Controls keep a dark substrate so text remains readable over bright or dark desktops.
 
 <details>
-<summary>Quick settings and file previews</summary>
+<summary>Quick settings, file previews and batch paste</summary>
 
 ![Menu-bar quick settings using sample data](docs/media/quick-settings.png)
 
 ![File cards showing formatted Markdown, syntax-coloured Swift and a local PDF thumbnail](docs/media/files.png)
+
+![Batch preview showing two sample clips in paste order](docs/media/batch.png)
 
 </details>
 
@@ -62,7 +71,7 @@ Cards fan out with staggered springs, respond to pointer movement, move through 
 
 **Paste on selection** is enabled by default. Open the menu-bar bubble and check **Accessibility**. Choose **Allow…** to request access when needed. CopyTaste only sends Command-V to the original destination process after checking permission, secure input, activation and session validity.
 
-If access is missing, a destination disappears or focus changes, the item is copied instead and no paste is sent to an unrelated app. Copy-only remains available. The sample selector never activates a destination or sends keyboard events. Real destination support depends on the receiving app and the selected content type.
+If access is missing, a destination disappears or focus changes, the item is copied for manual paste. If another copy replaces it while the destination activates, CopyTaste preserves the newer clipboard and cancels the paste. The sample selector never activates a destination or sends keyboard events. Real destination support depends on the receiving app and the selected content type.
 
 Quick and advanced settings refresh **Accessibility** and **Clipboard access** while visible. On macOS 15.4 or later, clipboard access shows the system setting for reading copies from other apps. If it is blocked, new clips are skipped. Check the Paste from Other Apps setting in macOS Privacy & Security. On earlier macOS versions the clipboard status is unavailable.
 
@@ -73,6 +82,8 @@ Version 0.2 fixes mixed clipboard items: real PNG/TIFF/JPEG/HEIC/GIF/WebP/BMP im
 Files are supported up to **8 MB per file**, within the **24 MB history budget**. Image files and PDFs show small thumbnails; UTF-8 text files show an excerpt; other types, including documents and archives, show the system file-type icon, name and size. A file is pasted as a file URL, not as its filename text.
 
 Markdown clips and `.md` files preview headings, emphasis, lists, quotes and fenced code. Recognised source files and code-like clips colour keywords, strings, comments, numbers and function calls. Formatting is a bounded preview rather than a full editor or language parser. Links are inert, remote images are never loaded, and code is never executed.
+
+Plain text previews are bounded and the full saved text remains available for pasting. Standalone `#RGB` and `#RRGGBB` values show a colour swatch.
 
 Files are captured one at a time. Directories, symlinks, multi-file copies, common key/vault formats and sensitive filenames are skipped. Recognised text files also pass the secret filter and 512 KiB text limit. Binary documents and images are not scanned for every possible secret; exclude sensitive applications and pause capture for private workflows.
 
@@ -88,7 +99,7 @@ File contents stay in RAM or the chosen encrypted history. **Pasting or copying 
 | iCloud Drive sync | Shared passphrase-encrypted file | Synced history remains encrypted |
 | Save pinned items only | Optional rule for local encrypted vaults | Other clips are discarded |
 
-Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 clips. Expiration is checked during use and on reopening; a closed app cannot run background deletions. Memory mode clears pins and collections on lock or quit too. macOS may page memory to disk; use FileVault to protect your Mac.
+Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 clips. **Keep pins past expiry** skips the age limit for pins and gives them priority within the count and byte limits. Match this choice across Macs sharing an iCloud vault. Expiration runs during use and on reopening. Memory mode clears pins and collections on lock or quit. macOS may page memory to disk, so use FileVault to protect your Mac.
 
 Local vaults use a non-synchronising Keychain key. Opening saved history requires Mac authentication. A copied local vault requires the original keychain; losing that key loses access. Apply storage changes explicitly. The new vault is written before the old active local vault is removed. Backups and filesystem snapshots cannot be revoked by the app.
 
@@ -98,7 +109,9 @@ In advanced settings, choose **iCloud Drive · encrypted sync**, enter a unique 
 
 Clips, files, pins and collections are merged through `iCloud Drive/CopyTaste/history.copytaste`. Data is encrypted before writing using AES-256-GCM and a PBKDF2-HMAC-SHA256 key (600,000 iterations, random salt). The phrase is not saved and cannot be recovered; enter it after locking or restarting.
 
-Merges run every six seconds while open and unlocked, coordinate file access and combine unresolved iCloud conflict versions. Deletions prevent stale peers restoring removed items. macOS handles network delivery: the local-merge time does not certify arrival on another device. Disconnecting leaves the shared encrypted file for other Macs. Paused capture does not pause sync; lock to stop both and unload the session.
+While open and unlocked, CopyTaste checks for merges every six seconds. A failed merge keeps changes in bounded memory and retries with increasing delays. Advanced settings show the issue, whether changes are waiting and the last successful local merge. Use **Sync Now** to retry immediately. Lock or quit discards pending changes that could not be written. If an existing vault is missing when reopened, restore it in iCloud Drive first.
+
+Deletions prevent stale peers restoring removed items. macOS handles network delivery, and a local merge time only reports the local file operation. Disconnecting leaves the shared encrypted file for other Macs. Locking stops capture and sync and unloads the session.
 
 The merge and encryption protocol is tested with isolated temporary files. Live delivery, account access and iCloud conflict handling still need two-Mac validation. There are no app accounts, analytics, remote previews, content logs or custom sync servers.
 

@@ -1,10 +1,10 @@
 # Validation — 4 November 2026
 
-CopyTaste 0.2 was validated locally using macOS 26.3.1, Xcode 26.5 and Swift 6.3.2 on Apple Silicon.
+CopyTaste 0.3 was validated locally using macOS 26.3.1, Xcode 26.5 and Swift 6.3.2 on Apple Silicon.
 
 ## Automated
 
-77 tests passed with synthetic content and isolated native pasteboards/temporary files. Regressions cover mixed image/URL representations, files and symlinks, file transfer cleanup, filename search, in-memory PDF previews, selector slots, a recent clip after 100 pins, Markdown blocks, bounded Unicode-safe syntax tokens, preference migration, unknown layout fallback and destination-safe direct-paste decisions. The permission revocation regression confirms that a loss of trust during activation leaves the clip copied and sends no event to the test sink.
+85 tests passed with synthetic content and isolated native pasteboards and temporary files. New cases cover Vision recognising the rendered sample image, ephemeral OCR search, batch order and size limits, snippet creation, edit validation, pin expiry, recovery after a missing sync file and paste cancellation when a newer copy replaces the clipboard. The sync regression confirms a stale peer cannot restore the original text after the pending edit merges. The permission revocation regression confirms that a loss of trust during activation leaves the clip copied and sends no event to the test sink.
 
 Release builds succeeded for arm64 and x86_64. The clean distribution ZIP is built and ad-hoc signed in a temporary staging directory outside folder-sync metadata. Bundle metadata and shell syntax checks passed. Test vaults, transfer fixtures and build staging directories were cleaned. No Docker resources were needed.
 
@@ -15,6 +15,8 @@ A separately identified preview app used synthetic clips and an isolated pastebo
 In the unlocked sample session, a scroll event moved selection from a link to the next image. Show all pins revealed the two sample pins. Switching to Single orbit removed the split, and the Files filter showed formatted Markdown, coloured Swift tokens and a PDF thumbnail. The final build puts the split captions on dark surfaces and leaves room for card shadows. README screenshots show these final sample surfaces. PNG exports were checked for text, EXIF and time chunks. The GIF was assembled from reencoded pixel frames.
 
 The Accessibility and Clipboard access rows were checked in both settings surfaces using the sample session. Live macOS permission changes still need a manual test.
+
+The 0.3 sample session showed numbered cards, Command-B queueing two clips in order, and Command-E opening the clip editor. The Save path was checked in integration tests. Actual destination paste acknowledgement and multi-Mac transport remain manual checks.
 
 ## Not certified
 

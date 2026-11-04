@@ -1,6 +1,6 @@
 # Security model
 
-CopyTaste 0.2.0 is an early release. It reduces accidental retention of sensitive copies; it is not a password vault or a defence against a compromised Mac.
+CopyTaste 0.3.0 reduces accidental retention of sensitive copies.
 
 ## Capture boundary
 
@@ -28,7 +28,7 @@ The key is a 256-bit value stored through Security.framework as a non-synchronis
 
 A missing key, failed authentication, corrupt file or unsupported version leaves the existing vault untouched. A storage write failure pauses capture and does not fall back to plaintext persistence. Saved history starts locked on relaunch. Key references are released when locking; keys are not printed or committed. Changing storage removes the prior active vault after writing the destination. A copied vault is not portable to a new Mac without the original Keychain item.
 
-App-managed retention applies to pins too, on capture, every minute while open and when reopening a saved vault. Files are not deleted while the app is closed. Removing entries or a vault is not guaranteed secure erasure on APFS, SSDs, provider backups or snapshots. Copies previously made by another application cannot be revoked.
+App-managed retention applies to pins by default, on capture, every minute while open and when reopening a saved vault. The optional pin exemption skips only the age limit. Pins still count toward the clip and byte limits. Files are not deleted while the app is closed. Removing entries or a vault is not guaranteed secure erasure on APFS, SSDs, provider backups or snapshots. Copies previously made by another application cannot be revoked.
 
 ## Clipboard output
 
@@ -43,6 +43,8 @@ The sync phrase is not persisted in Keychain, UserDefaults or the vault. Its UTF
 The encrypted state includes content, pin state, collection membership, deletion fingerprints and a clear-history timestamp. Merge prefers the most recently modified entry with a deterministic identity tie-break, and applies deletion boundaries to original capture dates so stale pin changes cannot resurrect removed content. Recopying after deletion creates a new capture date and can be retained again. Each merge reapplies the receiving device's content filters and retention. Device clocks must be reasonably accurate. Deletion logs are bounded; filling them pauses writes instead of dropping deletion evidence. Start a fresh shared vault after archiving or removing the old one if this boundary is reached.
 
 NSFileCoordinator coordinates local access. Unresolved NSFileVersion conflicts are decrypted, merged and marked resolved after a successful write. Identical state does not cause a new write, avoiding continuous sync churn. Known evicted placeholders are requested for download before connecting; no fresh vault is created over those placeholders. iCloud provides transport and account protection; a local merge timestamp does not establish delivery. Availability, placeholder formats and conflict handling need live multi-device validation. Disconnecting or switching to memory does not delete cloud/provider copies. All clients knowing the phrase can decrypt and modify shared history; no separate device revocation protocol exists in this version.
+
+A failed merge leaves pending edits and deletions in the unlocked session's bounded memory. CopyTaste retries with backoff and reports the last local merge. Lock or quit discards pending changes. Only explicit iCloud setup can initialise a vault. Reopening a previously configured vault requires the original file or a restored copy.
 
 ## Distribution and reporting
 
@@ -63,6 +65,8 @@ File URLs are handled only after metadata rejection. Only one regular file is ca
 
 Image representations win over accompanying text or URLs. Disabling image capture does not silently keep that image's URL. Thumbnail decoding is bounded before bitmap allocation; PDFs are rendered from Data at thumbnail size. Generic file types use native icons. No remote preview fetch or document macro execution is performed. Binary archives/documents and images may contain secrets the app cannot identify. All peers must support the file entry kind (0.2 or newer) before using file sync.
 
+Image text search is opt-in. Vision processes bounded images locally while the selector is open. Recognised text that matches secret heuristics is omitted from the temporary search index. The index is separate from history and is released on closing or locking the selector. Manual snippets, edited text and clip labels pass the text secret filter before saving.
+
 Selecting Copy or Paste for a file materialises an outgoing file in a unique owner-only temporary directory. The directory is mode 0700 and file mode 0600; its path is placed on the private-marked pasteboard. Transfers expire after five minutes even when clipboard auto-clear is set to Never. Clear History, lock and quit remove owned transfers earlier. Removal is best effort and does not promise secure erasure on SSDs, snapshots or crash recovery. A receiving application may retain its own copy. A crash can leave temporary transfers for OS cleanup.
 
 ## Direct paste and permissions
@@ -70,5 +74,7 @@ Selecting Copy or Paste for a file materialises an outgoing file in a unique own
 Automatic paste is a separate, optional delivery action after an explicit item selection. It requires Accessibility permission; CopyTaste cannot grant that permission itself. Copy-only and demo modes never post input. The app copies first, validates the requested process, activates it, waits briefly and checks trust, secure input, foreground PID and session generation again. Events are addressed to the original PID through CGEvent.postToPid, rather than sent indiscriminately to whichever app gains focus. Locking or reopening the selector cancels an in-flight paste. No global event tap, keystroke logger or Input Monitoring entitlement is used.
 
 Missing permission or failed destination validation leaves a copy available for manual paste. CGEvent delivery has no acknowledgement that the receiving app accepted the content; app-specific paste formats still matter. Real Accessibility approval and cross-app delivery need manual OS testing. Local ad-hoc rebuilds can require permission reapproval; use a stable Developer ID for distribution.
+
+The pasteboard change count is checked after destination activation. A newer copy cancels the pending paste and remains intact. Batch paste builds one temporary text block from explicitly selected text or links. It uses the same output and destination checks as a single clip.
 
 While settings are visible, CopyTaste queries its Accessibility trust and, on macOS 15.4 or later, the system pasteboard access policy. These status checks do not read clipboard contents or display permission prompts. The Allow button explicitly requests Accessibility. When the system policy blocks programmatic pasteboard access, the capture monitor skips the change before requesting item metadata or contents. The policy can be inspected separately from the Capture switch.

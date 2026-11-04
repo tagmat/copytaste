@@ -17,6 +17,7 @@ typography:
   brand: {fontFamily: "ui-rounded, system-ui", fontSize: "20pt", fontWeight: 600}
   link: {fontFamily: "ui-rounded, system-ui", fontSize: "20pt", fontWeight: 500}
   clip: {fontFamily: "ui-rounded, system-ui", fontSize: "18pt", fontWeight: 500}
+  swatch-label: {fontFamily: "ui-monospace, monospace", fontSize: "18pt", fontWeight: 500}
   search: {fontFamily: "system-ui", fontSize: "17pt", fontWeight: 400}
   section: {fontFamily: "system-ui", fontSize: "15pt", fontWeight: 600}
   file-name: {fontFamily: "system-ui", fontSize: "15pt", fontWeight: 500}
@@ -25,6 +26,7 @@ typography:
   markdown-heading: {fontFamily: "ui-rounded, system-ui", fontSize: "17pt", fontWeight: 600}
   filter: {fontFamily: "system-ui", fontSize: "11pt", fontWeight: 500}
   metadata: {fontFamily: "system-ui", fontSize: "10pt", fontWeight: 400}
+  shortcut-hint: {fontFamily: "ui-monospace, monospace", fontSize: "9pt", fontWeight: 400}
 rounded:
   code-block: "7pt"
   thumbnail: "10pt"
@@ -91,13 +93,25 @@ Cards use continuous rounded corners. Search, filter and hint strips use their d
 
 Choosing a fan card flings it 160 points upward while other fan cards drop 95 and spread outward. The departure uses 180 ms ease-in, fading and blurring to 9 points; the chosen card scales to 1.06 and others to 0.68. The controller waits 180 ms before hiding on choice or ordinary dismissal, then copies or pastes when applicable; loss of key status hides immediately. Reduce Motion removes phase/selection animations, tilt, rotation, blur and animated scaling, keeps the static fan positions and compact pin-stack scale, and skips the departure wait.
 
-**Interaction.** Command-Shift-V opens the selector. Arrow keys, mouse wheel and trackpad scrolling navigate. Scroll handling is local to the open selector, follows the dominant axis and ignores momentum; precise scrolling accumulates 28 points per step, with a 90 ms minimum between steps. Return and card activation paste when enabled; Option-Return copies only. Command-P, card pins and filters keep the selector open. Escape dismisses. Direct paste requires Accessibility permission; otherwise feedback and its permission action appear in the menu-bar bubble. Context menus provide copy, paste, pin, collection and delete. Icon actions have accessible names; selected cards expose a summary and selected state.
+**Interaction.** Command-Shift-V opens the selector by default. The advanced shortcut picker also offers Option-Command-V, Control-Option-V and Off. The menu-bar bubble shows the active shortcut when enabled. Arrow keys, mouse wheel and trackpad scrolling navigate. Scroll handling is local to the open selector, follows the dominant axis and ignores momentum. Precise scrolling accumulates 28 points per step, with a 90 ms minimum between steps.
+
+Return and card activation paste when enabled. Option-Return copies only. Command-1 through Command-9 choose the nine newest matches in either layout. Visible cards in that set show a muted monospaced shortcut hint beside the pin. Command-P, card pins and filters keep the selector open. Escape dismisses the selector or returns from an inline workflow to search. Icon actions have accessible names. Selected cards expose a summary and selected state.
+
+**Inline workflows.** The editor and batch preview replace the cards inside the same floating panel. Both use a 440-point frosted surface with 22-point padding and 18-point corners. Command-E or the card menu opens the editor. Command-N or New opens a snippet draft. The editor has an optional title and a 150-point text area for editable text and links. Image and file clips can be renamed. Validation appears inline in violet. Save or Cancel returns focus to search.
+
+Command-B or the card menu toggles a text or link clip in the batch. The Batch control opens a numbered preview in the order clips were added. A batch holds up to 12 clips and 512 KB of combined text. Items can be removed individually or cleared together. The separator can be a new line, blank line or tab. The footer offers Paste and Copy when automatic paste is enabled, and Copy when it is disabled.
 
 **Previews.** Real image representations take precedence over accompanying URLs. Image thumbnails stay in memory and crop to a 174-point preview. Files use a 126-point image or first-page PDF preview, a text preview, or a native 70 × 84 type icon with name and size. Eligible text files up to 512 KB decode at most 8000 bytes, then choose Markdown, code or plain text by format; filenames participate in search. Links show a title and host without fetching pages.
 
-Markdown and code previews use local SwiftUI text and AttributedString formatting. Markdown parsing is bounded to 8000 characters and 120 input lines; cards show at most six blocks, with headings, inline emphasis, lists, quotes, rules and fenced code. Text-card Markdown clips at 190 points. Links are inert and images are never fetched. Code highlighting is bounded to 8000 characters, with ten lines in text cards, seven in files and five inside Markdown fences. Fenced code has 8-point padding, code-block corners and an 18%-black backing.
+Text cards inspect the first 8000 characters. Plain text shows up to 1800 characters across seven lines. A standalone `#RGB` or `#RRGGBB` value uses a 136-point swatch with 12-point corners, a light outline and its monospaced value beneath it.
 
-**States.** Empty and no-match results replace cards with a frosted message and capture opt-in when applicable. Locked history replaces previews with authentication and, for iCloud, a secure passphrase field. The bubble shows capture/lock state, clip count, storage, native mini switches and conditional permission guidance. Advanced settings use native fields, pickers and alerts within graphite sections. Errors and feedback omit clipboard payloads.
+Markdown and code previews use local SwiftUI text and AttributedString formatting. Markdown parsing is bounded to 8000 characters and 120 input lines. Cards show at most six blocks, with headings, inline emphasis, lists, quotes, rules and fenced code. Text-card Markdown clips at 190 points. Links are inert and images are never fetched. Code highlighting is bounded to 8000 characters, with ten lines in text cards, seven in files and five inside Markdown fences. Fenced code has 8-point padding, code-block corners and an 18%-black backing.
+
+**Image text search.** The advanced privacy setting enables on-device Vision recognition for up to 60 recent images while the selector is open. The index lives in the selector session and clears on lock. The search capsule displays an accessible progress indicator when a query is present and recognition is still running.
+
+**States.** Empty and no-match results replace cards with a frosted message and capture opt-in when applicable. Locked history replaces previews with authentication and, for iCloud, a secure passphrase field. The bubble shows capture or lock state, clip count, storage and native mini switches. Advanced settings use native fields, pickers and alerts within graphite sections. Errors and feedback omit clipboard payloads.
+
+**Permission and sync status.** Quick and advanced settings refresh Accessibility and clipboard access status while visible. Accessibility gates direct paste and has an Allow action when access is missing. Clipboard access displays the system behavior where macOS exposes it and an unavailable state on earlier releases. Sample sessions display their own status. For active, unlocked iCloud storage, advanced settings show the last local merge when available, a Sync Now action, retry feedback and changes waiting in memory. The bubble reflects pending changes or a retry beneath its storage label.
 
 ## Do's and Don'ts
 
