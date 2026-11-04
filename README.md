@@ -20,7 +20,7 @@ History stays in RAM by default. Capture starts only after you enable it. The me
 
 ## Run
 
-Requires macOS 14 or later and Xcode 16 or later (Swift 6). No third-party packages are needed.
+The app runs on macOS 14 or later. Building requires Xcode 16.3 or later for the macOS 15.4 pasteboard API. No third-party packages are needed.
 
 ```sh
 ./scripts/build-app.sh --universal
@@ -60,9 +60,11 @@ Cards fan out with staggered springs, respond to pointer movement, move through 
 
 ## Direct paste
 
-**Paste on selection** is enabled by default. Open the menu-bar bubble and choose **Enable Direct Paste** to grant macOS Accessibility access. CopyTaste only sends Command-V to the original destination process after checking permission, secure input, activation and session validity. It does not install a global keystroke logger.
+**Paste on selection** is enabled by default. Open the menu-bar bubble and check **Accessibility**. Choose **Allow…** to request access when needed. CopyTaste only sends Command-V to the original destination process after checking permission, secure input, activation and session validity.
 
 If access is missing, a destination disappears or focus changes, the item is copied instead and no paste is sent to an unrelated app. Copy-only remains available. The sample selector never activates a destination or sends keyboard events. Real destination support depends on the receiving app and the selected content type.
+
+Quick and advanced settings refresh **Accessibility** and **Clipboard access** while visible. On macOS 15.4 or later, clipboard access shows the system setting for reading copies from other apps. If it is blocked, new clips are skipped. Check the Paste from Other Apps setting in macOS Privacy & Security. On earlier macOS versions the clipboard status is unavailable.
 
 ## Images, files and small previews
 

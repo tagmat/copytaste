@@ -7,7 +7,6 @@ struct QuickSettingsView: View {
     let onPicker: () -> Void
     let onAdvanced: () -> Void
     let onSamples: () -> Void
-    @State private var trusted = PasteService.hasAccess
     @State private var confirmClear = false
 
     var body: some View {
@@ -23,7 +22,7 @@ struct QuickSettingsView: View {
             }
             HStack(spacing: 6) {
                 Circle().fill(model.isCapturing ? Palette.mint : Palette.secondary).frame(width: 6, height: 6)
-                Text(model.isLocked ? "Locked" : (model.isCapturing ? "Capturing" : "Capture paused"))
+                Text(model.isLocked ? "Locked" : (model.isCapturing ? "Capture on" : "Capture paused"))
                 Spacer()
                 Text("\(model.snapshot.entries.count) clips").monospacedDigit()
             }.font(.system(size: 11)).foregroundStyle(Palette.secondary)
@@ -51,15 +50,8 @@ struct QuickSettingsView: View {
                     Text("Single orbit").tag(SelectorLayout.orbit)
                 }.labelsHidden().pickerStyle(.menu).frame(width: 144).font(.system(size: 11))
             }
-            if model.preferences.autoPaste && !trusted && !model.isDemo {
-                VStack(alignment: .leading, spacing: 9) {
-                    Text("One permission. Then just choose.").font(.system(size: 12, weight: .medium))
-                    Text("Allow Accessibility so CopyTaste can paste into the app you came from.")
-                        .font(.system(size: 11)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("Enable Direct Paste") { PasteService.requestAccess(); trusted = PasteService.hasAccess }
-                        .buttonStyle(.bordered).controlSize(.small)
-                }.padding(13).frame(maxWidth: .infinity, alignment: .leading).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
-            }
+            PermissionStatusView(isDemo: model.isDemo)
+                .padding(12).background(Palette.raised, in: RoundedRectangle(cornerRadius: 13))
             Button(action: onAdvanced) {
                 HStack {
                     Image(systemName: model.preferences.storageMode == .memory ? "memorychip" : "lock.icloud")
@@ -84,8 +76,6 @@ struct QuickSettingsView: View {
             }.font(.system(size: 10))
         }.padding(20).frame(width: 340).foregroundStyle(Palette.text).background(Palette.background)
             .preferredColorScheme(.dark).tint(Palette.mint)
-            .onAppear { trusted = PasteService.hasAccess }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in trusted = PasteService.hasAccess }
             .alert("Clear all history?", isPresented: $confirmClear) {
                 Button("Cancel", role: .cancel) { }
                 Button("Clear", role: .destructive) { model.clearHistory(); PreviewCache.shared.removeAll() }

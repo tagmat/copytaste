@@ -39,7 +39,9 @@ final class PasteService {
         guard !secureInput(), let destination, destination.processID != ProcessInfo.processInfo.processIdentifier,
               activate(destination.processID) else { return .copied }
         await settle()
-        guard stillValid(), trusted(), !secureInput(), frontmostPID() == destination.processID else { return .destinationChanged }
+        guard stillValid() else { return .destinationChanged }
+        guard trusted() else { return .permissionRequired }
+        guard !secureInput(), frontmostPID() == destination.processID else { return .destinationChanged }
         send(destination.processID)
         return .pasted
     }

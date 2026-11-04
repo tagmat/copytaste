@@ -68,6 +68,7 @@ final class ClipboardMonitor {
         let count = pasteboard.changeCount
         guard count != lastChangeCount else { return }
         lastChangeCount = count
+        if #available(macOS 15.4, *), pasteboard.accessBehavior == .alwaysDeny { return }
         let source = sourceProvider()
         let sourceID = source.bundleID
         let items = pasteboard.pasteboardItems ?? []

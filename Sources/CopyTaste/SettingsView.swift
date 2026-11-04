@@ -74,6 +74,7 @@ struct SettingsView: View {
                     Toggle("Capture images", isOn: Binding(get: { model.preferences.captureImages }, set: { model.setCaptureImages($0) }))
                     Toggle("Capture files", isOn: Binding(get: { model.preferences.captureFiles }, set: { model.setCaptureFiles($0) }))
                     Toggle("Paste on selection", isOn: Binding(get: { model.preferences.autoPaste }, set: { model.setAutoPaste($0) }))
+                    PermissionStatusView(isDemo: model.isDemo)
                     Text("Image pixels are preferred over accompanying links. Files are limited to 8 MB; folders, multiple-file copies, credential vaults and key files are skipped. Image and binary file content is not scanned for every possible secret. Source attribution is best effort.")
                         .font(.system(size: 11)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack {
@@ -86,8 +87,6 @@ struct SettingsView: View {
                             Spacer(); Button("Remove") { model.removeExclusion(identifier) }
                         }
                     }
-                    Button(PasteService.hasAccess ? "Direct Paste Is Allowed" : "Allow Direct Paste…") { PasteService.requestAccess() }
-                        .disabled(model.isDemo)
                 }
                 section("Collections", symbol: "folder") {
                     HStack {

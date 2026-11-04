@@ -29,6 +29,17 @@ final class PasteServiceTests: XCTestCase {
         XCTAssertFalse(sent)
     }
 
+    @MainActor func testRevokedPermissionDuringActivationIsReportedWithoutPosting() async {
+        var trusted = true
+        var sent = false
+        let service = PasteService(trusted: { trusted }, secureInput: { false }, frontmostPID: { 42 },
+            activate: { _ in true }, send: { _ in sent = true }, settle: { trusted = false })
+        let outcome = await service.perform(copy: { true }, destination: PasteDestination(processID: 42, name: "Fixture"),
+            automatic: true, demo: false)
+        XCTAssertEqual(outcome, .permissionRequired)
+        XCTAssertFalse(sent)
+    }
+
     @MainActor func testChangedDestinationAndInvalidatedSessionNeverPaste() async {
         var sent = false
         let service = PasteService(trusted: { true }, secureInput: { false }, frontmostPID: { 99 },
