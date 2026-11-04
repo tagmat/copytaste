@@ -6,7 +6,7 @@ History stays in RAM by default. Capture starts only after you enable it. The me
 
 ![CopyTaste floating selector with synthetic sample clips](docs/media/selector.png)
 
-*The optional single-orbit layout. All screenshots use fictional sample clips in an isolated preview session.*
+*The default layout keeps pins on the left and recent clips on the right. All screenshots use fictional sample clips in an isolated preview session.*
 
 | Keep close | Move quickly | Choose what stays |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ History stays in RAM by default. Capture starts only after you enable it. The me
 
 ![Synthetic interface tour of CopyTaste](docs/media/interface-tour.gif)
 
-*A looping tour assembled from application screenshots, not a recording of the card animations. Media contains sample data only and is reencoded without source metadata.*
+*A looping sequence of application screenshots. Each frame uses sample data and is reencoded without source metadata.*
 
 ## Run
 
@@ -54,7 +54,7 @@ Cards fan out with staggered springs, respond to pointer movement, move through 
 
 ![Menu-bar quick settings using sample data](docs/media/quick-settings.png)
 
-![File cards with a local PDF thumbnail](docs/media/files.png)
+![File cards showing formatted Markdown, syntax-coloured Swift and a local PDF thumbnail](docs/media/files.png)
 
 </details>
 

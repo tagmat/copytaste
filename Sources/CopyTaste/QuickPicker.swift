@@ -206,8 +206,11 @@ struct QuickPicker: View {
                         HStack(spacing: 14) {
                             pinnedStack.frame(width: 222)
                             VStack(spacing: 0) {
-                                Text("Recent · newest first").font(.system(size: 10, weight: .medium)).foregroundStyle(Palette.secondary)
-                                fan(recent, width: geometry.size.width - 236).clipped()
+                                Text("Recent · newest first")
+                                    .font(.system(size: 10, weight: .medium)).foregroundStyle(Palette.secondary)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .modifier(FrostedSurface(radius: 10)).padding(.top, 6)
+                                fan(recent, width: geometry.size.width - 260, insideSplit: true)
                             }
                         }.padding(.horizontal, 12)
                     } else { fan(entries, width: geometry.size.width) }
@@ -232,11 +235,13 @@ struct QuickPicker: View {
             .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.82), value: selection)
     }
 
-    private func fan(_ values: [ClipEntry], width: CGFloat) -> some View {
+    private func fan(_ values: [ClipEntry], width: CGFloat, insideSplit: Bool = false) -> some View {
         let index = values.firstIndex { $0.id == selected?.id } ?? 0
+        // Leave room for the outer cards and their shadows within the recent column.
+        let spread = insideSplit ? max(0, (width - 350) / 6) : min(196, (width - 310) / 3.7)
         return ZStack {
             ForEach(PickerLayout.slots(count: values.count, selection: index), id: \.index) { slot in
-                card(values[slot.index], delta: Double(slot.offset), width: width)
+                card(values[slot.index], delta: Double(slot.offset), spread: spread)
             }
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -248,6 +253,7 @@ struct QuickPicker: View {
             HStack(spacing: 6) {
                 Image(systemName: "pin.fill"); Text("Pinned"); Text("\(pinned.count)").foregroundStyle(Palette.secondary)
             }.font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.mint)
+                .padding(.horizontal, 10).padding(.vertical, 5).modifier(FrostedSurface(radius: 10))
             ZStack {
                 ForEach(Array(values.enumerated()), id: \.element.id) { index, entry in
                     FlightCard(entry: entry, selected: entry.id == selected?.id,
@@ -258,7 +264,10 @@ struct QuickPicker: View {
                         .zIndex(Double(3 - index))
                 }
             }.frame(width: 210, height: 244)
-            Button("Show all pins") { filter = .pinned }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(Palette.secondary)
+            Button { filter = .pinned } label: {
+                Text("Show all pins").font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 5).modifier(FrostedSurface(radius: 10))
+            }.buttonStyle(.plain)
         }.opacity(isOpen ? 1 : 0).offset(x: isOpen || reduceMotion ? 0 : -100)
             .animation(reduceMotion ? nil : .spring(response: 0.5, dampingFraction: 0.82), value: isOpen)
     }
@@ -289,10 +298,9 @@ struct QuickPicker: View {
             .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.8), value: isOpen)
     }
 
-    private func card(_ entry: ClipEntry, delta: Double, width: CGFloat) -> some View {
+    private func card(_ entry: ClipEntry, delta: Double, spread: CGFloat) -> some View {
         let chosen = presentation.chosenID == entry.id
         let departing = presentation.phase == .departing
-        let spread = min(196, (width - 310) / 3.7)
         let x = isOpen || reduceMotion ? delta * spread : (departing ? delta * (spread + 45) : delta * 18)
         let y = isOpen || reduceMotion ? abs(delta) * 11 : (departing ? (chosen ? -160.0 : 95.0) : 130.0)
         return FlightCard(entry: entry, selected: entry.id == selected?.id,

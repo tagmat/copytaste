@@ -12,7 +12,7 @@ Release builds succeeded for arm64 and x86_64. The clean distribution ZIP is bui
 
 A separately identified preview app used synthetic clips and an isolated pasteboard, with global-hot-key registration disabled. It did not restart or clear the user's live CopyTaste memory session. The selector, menu-bar settings bubble, image/PDF/text previews and file filter were inspected. The final visual pass confirmed readable dark control capsules, opaque spatial cards, mint selection, real PDF thumbnails and text-file excerpts. All source findings from the bounded review were corrected: clearing outgoing transfers/cache, filename search and distinguishable VoiceOver card labels.
 
-The subsequent Markdown/code and split-layout additions passed source review and the automated regressions above. A locked Mac prevented refreshing their final interactive captures; wheel/trackpad behaviour and final colour/layout rendering still need an unlocked-session check. README media illustrates the previously captured single-orbit, file and bubble surfaces with synthetic samples. PNG exports were checked for text/EXIF/time chunks; the GIF is assembled from new pixel frames without source metadata.
+In the unlocked sample session, a scroll event moved selection from a link to the next image. Show all pins revealed the two sample pins. Switching to Single orbit removed the split, and the Files filter showed formatted Markdown, coloured Swift tokens and a PDF thumbnail. The final build puts the split captions on dark surfaces and leaves room for card shadows. README screenshots show these final sample surfaces. PNG exports were checked for text, EXIF and time chunks. The GIF was assembled from reencoded pixel frames.
 
 ## Not certified
 
