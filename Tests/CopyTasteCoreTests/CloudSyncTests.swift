@@ -74,6 +74,23 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertTrue(a.merging(b).snapshot.entries[0].isPinned)
     }
 
+    func testFolderRenameSurvivesOlderPeerAndDeletionWins() throws {
+        let id = UUID()
+        let legacy = Data("{\"id\":\"\(id.uuidString)\",\"name\":\"Old folder\"}".utf8)
+        let original = try JSONDecoder().decode(ClipCollection.self, from: legacy)
+        XCTAssertNil(original.modifiedAt)
+        var renamed = original
+        renamed.name = "New folder"
+        renamed.modifiedAt = Date()
+        let first = SyncState(snapshot: VaultSnapshot(collections: [original]))
+        let second = SyncState(snapshot: VaultSnapshot(collections: [renamed]))
+        XCTAssertEqual(first.merging(second), second.merging(first))
+        XCTAssertEqual(first.merging(second).snapshot.collections, [renamed])
+        var deleted = second
+        deleted.recordChanges(from: second.snapshot, to: VaultSnapshot())
+        XCTAssertTrue(deleted.merging(second).snapshot.collections.isEmpty)
+    }
+
     func testWrongPassphraseDoesNotModifyExistingVault() throws {
         try withURL { url in
             _ = try CloudVault.connect(url: url, passphrase: phrase)

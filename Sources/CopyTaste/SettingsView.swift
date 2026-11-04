@@ -9,7 +9,7 @@ struct SettingsView: View {
     @State private var storage = StorageMode.memory
     @State private var pinnedOnly = false
     @State private var syncPassphrase = ""
-    @State private var newCollection = ""
+    @State private var newFolder = ""
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -23,7 +23,7 @@ struct SettingsView: View {
                     }
                 }
                 if model.isLocked {
-                    Label("Unlock history before changing storage or collections.", systemImage: "lock.shield")
+                    Label("Unlock history before changing storage or folders.", systemImage: "lock.shield")
                         .font(.system(size: 12)).foregroundStyle(Palette.secondary)
                     Button("Open Selector", action: onShowPicker)
                 }
@@ -104,17 +104,24 @@ struct SettingsView: View {
                         }
                     }
                 }
-                section("Collections", symbol: "folder") {
+                section("Folders", symbol: "folder") {
                     HStack {
-                        TextField("New collection", text: $newCollection).textFieldStyle(.roundedBorder)
-                        Button("Create") { model.createCollection(newCollection); newCollection = "" }.disabled(model.isLocked || newCollection.trimmingCharacters(in: .whitespaces).isEmpty)
+                        TextField("New folder", text: $newFolder).textFieldStyle(.roundedBorder)
+                        Button("Create") {
+                            do {
+                                try model.saveFolder(name: newFolder)
+                                newFolder = ""
+                            } catch { model.errorMessage = error.localizedDescription }
+                        }.disabled(model.isLocked || newFolder.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     ForEach(model.snapshot.collections) { collection in
                         HStack {
                             Text(collection.name); Spacer()
-                            Button("Delete") { model.deleteCollection(collection.id) }.disabled(model.isLocked)
+                            Button("Remove") { model.deleteCollection(collection.id) }.disabled(model.isLocked)
                         }
                     }
+                    Text("Use the selector’s Folders menu to rename a folder. Removing a folder moves its clips to Unfiled.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                 }
                 section("On your Mac", symbol: "desktopcomputer") {
                     Picker("Selector shortcut", selection: Binding(get: { model.preferences.selectorShortcut },
@@ -132,7 +139,8 @@ struct SettingsView: View {
                         }
                     Text("Return pastes · Option-Return copies · ⌘1–9 quick paste · ⌘E edits · ⌘B adds to batch")
                         .foregroundStyle(Palette.secondary)
-                    Text("CopyTaste 0.3.0 · by tagmat · MIT License").font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                    Text("CopyTaste \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0") · by tagmat · MIT License")
+                        .font(.system(size: 10)).foregroundStyle(Palette.secondary)
                 }
             }.padding(30)
         }.background(Palette.background).foregroundStyle(Palette.text).tint(Palette.mint).preferredColorScheme(.dark)

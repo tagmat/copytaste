@@ -49,6 +49,11 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
 
     public var byteCount: Int { (text?.utf8.count ?? 0) + (imageData?.count ?? 0) + (fileData?.count ?? 0) }
 
+    public var hexColor: HexColor? {
+        guard kind == .text, let text else { return nil }
+        return HexColor(text)
+    }
+
     public var fingerprint: String {
         var data = Data(kind.rawValue.utf8)
         data.append(Data((text ?? "").utf8))
@@ -61,7 +66,13 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
 public struct ClipCollection: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var name: String
-    public init(id: UUID = UUID(), name: String) { self.id = id; self.name = name }
+    public var modifiedAt: Date?
+
+    public init(id: UUID = UUID(), name: String, modifiedAt: Date? = nil) {
+        self.id = id
+        self.name = name
+        self.modifiedAt = modifiedAt
+    }
 }
 
 public struct VaultSnapshot: Codable, Equatable, Sendable {

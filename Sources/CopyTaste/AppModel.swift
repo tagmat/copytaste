@@ -9,6 +9,22 @@ enum HistoryScope: Hashable {
     case all, pinned, kind(ClipKind), collection(UUID)
 }
 
+private enum FolderError: LocalizedError {
+    case locked, invalidName, duplicateName, limit, missingFolder, missingClip, saveFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .locked: "Unlock history to manage folders."
+        case .invalidName: "Enter a folder name of up to 40 characters on one line."
+        case .duplicateName: "A folder already has that name."
+        case .limit: "History can hold up to 30 folders."
+        case .missingFolder: "This folder was removed."
+        case .missingClip: "This clip is no longer in history."
+        case .saveFailed: "The folder could not be saved."
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var snapshot = VaultSnapshot()
@@ -291,26 +307,54 @@ final class AppModel: ObservableObject {
         PreviewCache.shared.removeAll()
     }
 
-    func createCollection(_ name: String) {
-        let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-        guard !name.isEmpty, snapshot.collections.count < 30,
-              !snapshot.collections.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else { return }
+    @discardableResult func saveFolder(name: String, id: UUID? = nil, moving clipID: UUID? = nil) throws -> UUID {
+        guard !isLocked else { throw FolderError.locked }
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 40, name.utf8.count <= 160,
+              name.rangeOfCharacter(from: .controlCharacters.union(.newlines)) == nil else { throw FolderError.invalidName }
+        guard !snapshot.collections.contains(where: {
+            $0.id != id && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+        }) else { throw FolderError.duplicateName }
         var state = snapshot
-        let collection = ClipCollection(name: name)
-        state.collections.append(collection)
-        commit(state)
-        scope = .collection(collection.id)
+        let now = Date()
+        let folderID: UUID
+        if let id {
+            guard let index = state.collections.firstIndex(where: { $0.id == id }) else { throw FolderError.missingFolder }
+            state.collections[index].name = name
+            state.collections[index].modifiedAt = now
+            folderID = id
+        } else {
+            guard state.collections.count < 30 else { throw FolderError.limit }
+            let folder = ClipCollection(name: name, modifiedAt: now)
+            state.collections.append(folder)
+            folderID = folder.id
+        }
+        if let clipID {
+            guard let index = state.entries.firstIndex(where: { $0.id == clipID }) else { throw FolderError.missingClip }
+            state.entries[index].collectionID = folderID
+            state.entries[index].modifiedAt = now
+        }
+        guard commit(state) else { throw FolderError.saveFailed }
+        if id == nil { scope = .collection(folderID) }
+        return folderID
     }
 
-    func deleteCollection(_ id: UUID) {
+    @discardableResult func deleteCollection(_ id: UUID) -> Bool {
+        guard snapshot.collections.contains(where: { $0.id == id }) else { return false }
         var state = snapshot
         state.collections.removeAll { $0.id == id }
-        for index in state.entries.indices where state.entries[index].collectionID == id { state.entries[index].collectionID = nil }
-        commit(state)
-        scope = .all
+        let now = Date()
+        for index in state.entries.indices where state.entries[index].collectionID == id {
+            state.entries[index].collectionID = nil
+            state.entries[index].modifiedAt = now
+        }
+        guard commit(state) else { return false }
+        if scope == .collection(id) { scope = .all }
+        return true
     }
 
     func move(_ entry: ClipEntry, to collection: UUID?) {
+        if let collection, !snapshot.collections.contains(where: { $0.id == collection }) { return }
         var state = snapshot
         guard let index = state.entries.firstIndex(where: { $0.id == entry.id }) else { return }
         state.entries[index].collectionID = collection

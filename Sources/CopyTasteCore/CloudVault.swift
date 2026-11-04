@@ -39,6 +39,13 @@ public struct SyncState: Codable, Equatable, Sendable {
         }
         var collections: [UUID: ClipCollection] = [:]
         for collection in snapshot.collections + other.snapshot.collections where result.deletedCollections[collection.id] == nil {
+            if let prior = collections[collection.id] {
+                let incoming = collection.modifiedAt ?? .distantPast
+                let previous = prior.modifiedAt ?? .distantPast
+                if incoming < previous || (incoming == previous && !prior.name.utf8.lexicographicallyPrecedes(collection.name.utf8)) {
+                    continue
+                }
+            }
             collections[collection.id] = collection
         }
         result.snapshot = VaultSnapshot(entries: entries.values.sorted {
@@ -65,7 +72,7 @@ public enum CloudVaultError: Error, LocalizedError {
         case .changedVault: "The sync vault was replaced with a different vault. Lock and reopen with its passphrase."
         case .invalidContent: "The sync vault contains unsupported data. The file was not replaced."
         case .tooManyDeletes: "The sync deletion log is full. Capture is paused; create a new sync vault before continuing."
-        case .collectionLimit: "The shared history exceeds 30 collections. Remove unused collections on a Mac and sync again. The existing file was not replaced."
+        case .collectionLimit: "The shared history exceeds 30 folders. Remove unused folders on a Mac and sync again. The existing file was not replaced."
         }
     }
 }

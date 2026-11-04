@@ -149,12 +149,12 @@ private final class PickerPanel: NSPanel {
 }
 
 enum PickerFilter: String, CaseIterable {
-    case all = "All", pinned = "Pinned", text = "Text", links = "Links", images = "Images", files = "Files"
+    case all = "All", pinned = "Pinned", text = "Text", links = "Links", images = "Images", files = "Files", colors = "Colors"
     var symbol: String {
-        switch self { case .all: "square.stack.3d.up"; case .pinned: "pin"; case .text: "text.alignleft"; case .links: "link"; case .images: "photo"; case .files: "doc" }
+        switch self { case .all: "square.stack.3d.up"; case .pinned: "pin"; case .text: "text.alignleft"; case .links: "link"; case .images: "photo"; case .files: "doc"; case .colors: "paintpalette" }
     }
     func includes(_ entry: ClipEntry) -> Bool {
-        switch self { case .all: true; case .pinned: entry.isPinned; case .text: entry.kind == .text; case .links: entry.kind == .link; case .images: entry.kind == .image; case .files: entry.kind == .file }
+        switch self { case .all: true; case .pinned: entry.isPinned; case .text: entry.kind == .text; case .links: entry.kind == .link; case .images: entry.kind == .image; case .files: entry.kind == .file; case .colors: entry.hexColor != nil }
     }
 }
 
@@ -190,7 +190,9 @@ struct QuickPicker: View {
     @State private var query = ""
     @State private var filter = PickerFilter.all
     @State private var selection = 0
-    @State private var collectionID: UUID?
+    @State private var folderScope = FolderScope.all
+    @State private var folderDraft: FolderDraft?
+    @State private var removingFolder: ClipCollection?
     @State private var syncPassphrase = ""
     @State private var draft: ClipDraft?
     @State private var batchIDs: [UUID] = []
@@ -203,7 +205,7 @@ struct QuickPicker: View {
 
     private var entries: [ClipEntry] {
         let matches = History.search(model.snapshot.entries.filter {
-            filter.includes($0) && (collectionID == nil || $0.collectionID == collectionID)
+            filter.includes($0) && folderScope.includes($0)
         }, query: query, imageText: model.preferences.imageTextSearch ? imageText : [:])
         return PickerLayout.ordered(matches, layout: model.preferences.selectorLayout)
     }
@@ -212,7 +214,14 @@ struct QuickPicker: View {
     private var splitLayout: Bool { model.preferences.selectorLayout == .pinnedAndRecent && filter != .pinned && !pinned.isEmpty && !recent.isEmpty }
     private var selected: ClipEntry? { entries.indices.contains(selection) ? entries[selection] : nil }
     private var isOpen: Bool { presentation.phase == .open }
-    private var workflowOpen: Bool { draft != nil || showsBatch }
+    private var workflowOpen: Bool { draft != nil || showsBatch || folderDraft != nil || removingFolder != nil }
+    private var folders: [ClipCollection] {
+        model.snapshot.collections.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    private var activeFolder: ClipCollection? {
+        guard case .folder(let id) = folderScope else { return nil }
+        return model.snapshot.collections.first { $0.id == id }
+    }
     private var batchEntries: [ClipEntry] {
         batchIDs.compactMap { id in model.snapshot.entries.first { $0.id == id } }
     }
@@ -228,6 +237,10 @@ struct QuickPicker: View {
         Group {
             if !model.isLocked, let binding = Binding($draft) {
                 ClipEditor(draft: binding, onSave: saveDraft, onClose: closeWorkflow)
+            } else if !model.isLocked, let binding = Binding($folderDraft) {
+                FolderEditor(draft: binding, onSave: saveFolder, onClose: closeWorkflow)
+            } else if !model.isLocked, let removingFolder {
+                folderRemoval(removingFolder)
             } else if !model.isLocked && showsBatch {
                 let batch = batchEntries
                 let output = ClipBatch.text(batch, separator: batchSeparator)
@@ -251,7 +264,10 @@ struct QuickPicker: View {
         .onChange(of: workflowOpen) { _, open in presentation.allowsScrollNavigation = !open }
         .onChange(of: query) { _, _ in resetSelection() }
         .onChange(of: filter) { _, _ in resetSelection() }
-        .onChange(of: collectionID) { _, _ in resetSelection() }
+        .onChange(of: folderScope) { _, _ in resetSelection() }
+        .onChange(of: model.snapshot.collections.map(\.id)) { _, ids in
+            if case .folder(let id) = folderScope, !ids.contains(id) { folderScope = .all }
+        }
         .onChange(of: model.preferences.selectorLayout) { _, _ in resetSelection() }
         .onChange(of: presentation.navigationStep) { old, new in if !workflowOpen { move(new - old) } }
         .onChange(of: entries.map(\.id)) { _, identifiers in
@@ -264,6 +280,8 @@ struct QuickPicker: View {
                 query = ""
                 batchIDs.removeAll()
                 draft = nil
+                folderDraft = nil
+                removingFolder = nil
                 showsBatch = false
                 imageText.removeAll()
                 indexedImageIDs.removeAll()
@@ -405,14 +423,22 @@ struct QuickPicker: View {
     @ViewBuilder private func clipActions(_ entry: ClipEntry) -> some View {
         Button("Paste") { onChoose(entry, false) }
         Button("Copy Only") { onChoose(entry, true) }
+        if let color = entry.hexColor {
+            Button("Copy Hex") { copyColor(color.hex) }
+            Button("Copy CSS RGB") { copyColor(color.cssRGB) }
+        }
         Button(entry.text == nil ? "Rename…" : "Edit Clip…") { draft = ClipDraft(entry) }
         if entry.text != nil {
             Button(batchIDs.contains(entry.id) ? "Remove from Batch" : "Add to Batch") { addToBatch(entry) }
         }
         Button(entry.isPinned ? "Unpin" : "Pin") { model.togglePin(entry) }
-        Menu("Collection") {
-            Button("None") { model.move(entry, to: nil) }
-            ForEach(model.snapshot.collections) { collection in Button(collection.name) { model.move(entry, to: collection.id) } }
+        Menu("Move to Folder") {
+            Button("Unfiled") { model.move(entry, to: nil) }.disabled(entry.collectionID == nil)
+            ForEach(folders) { folder in
+                Button(folder.name) { model.move(entry, to: folder.id) }.disabled(entry.collectionID == folder.id)
+            }
+            Divider()
+            Button("New Folder…") { folderDraft = FolderDraft(clipID: entry.id) }
         }
         Divider()
         Button("Delete", role: .destructive) { model.delete(entry) }
@@ -429,12 +455,7 @@ struct QuickPicker: View {
                             .background(filter == item ? Palette.mint : .clear, in: Capsule())
                     }.buttonStyle(.plain).accessibilityAddTraits(filter == item ? .isSelected : [])
                 }
-                if !model.snapshot.collections.isEmpty {
-                    Menu {
-                        Button("All collections") { collectionID = nil }
-                        ForEach(model.snapshot.collections) { collection in Button(collection.name) { collectionID = collection.id } }
-                    } label: { Image(systemName: "folder").padding(8) }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Filter collection")
-                }
+                folderMenu.disabled(model.isLocked)
             }.padding(6).modifier(FrostedSurface(radius: 24))
             HStack(spacing: 18) {
                 Label(model.isDemo ? "Sample orbit" : model.storageLabel, systemImage: "memorychip")
@@ -454,12 +475,58 @@ struct QuickPicker: View {
         }.opacity(isOpen ? 1 : 0).animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isOpen)
     }
 
+    private var folderMenu: some View {
+        let counts = Dictionary(grouping: model.snapshot.entries, by: \.collectionID).mapValues(\.count)
+        let label = activeFolder?.name ?? (folderScope == .unfiled ? "Unfiled" : "Folders")
+        return Menu {
+            folderFilter("All clips", count: model.snapshot.entries.count, scope: .all)
+            folderFilter("Unfiled", count: counts[nil, default: 0], scope: .unfiled)
+            if !folders.isEmpty { Divider() }
+            ForEach(folders) { folder in
+                folderFilter(folder.name, count: counts[folder.id, default: 0], scope: .folder(folder.id))
+            }
+            Divider()
+            Button("New Folder…") { folderDraft = FolderDraft() }
+            if let activeFolder {
+                Button("Rename Folder…") { folderDraft = FolderDraft(name: activeFolder.name, folderID: activeFolder.id) }
+                Button("Remove Folder…") { removingFolder = activeFolder }
+            }
+        } label: {
+            Label(label, systemImage: "folder").font(.system(size: 11, weight: .medium))
+                .lineLimit(1).frame(maxWidth: 112)
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .accessibilityLabel("Filter folders").accessibilityValue(label)
+    }
+
+    private func folderFilter(_ name: String, count: Int, scope: FolderScope) -> some View {
+        Button { folderScope = scope } label: {
+            Label("\(name) · \(count)", systemImage: folderScope == scope ? "checkmark" : "folder")
+        }
+    }
+
+    private func folderRemoval(_ folder: ClipCollection) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Remove folder?").font(.system(size: 20, weight: .semibold, design: .rounded))
+            Text("Clips in “\(folder.name)” will move to Unfiled.")
+                .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", action: closeWorkflow)
+                Button("Remove Folder", role: .destructive) {
+                    if model.deleteCollection(folder.id) { folderScope = .all }
+                    closeWorkflow()
+                }
+            }
+        }.padding(22).frame(width: 400).modifier(FrostedSurface(radius: 18))
+    }
+
     private var emptyState: some View {
         VStack(spacing: 15) {
             Image(systemName: "square.stack.3d.up").font(.system(size: 36, weight: .ultraLight)).foregroundStyle(Palette.mint)
-            Text(query.isEmpty ? "A little space for your next idea." : "Nothing in this orbit.")
+            Text(query.isEmpty && folderScope != .all && filter == .all ? "This folder is empty." : (query.isEmpty && filter == .all ? "A little space for your next idea." : "Nothing in this orbit."))
                 .font(.system(size: 22, weight: .medium, design: .rounded))
-            Text(query.isEmpty ? "Copy text, an image, a link or a file. It will float right here." : "Try another word or a different filter.")
+            Text(folderScope != .all ? "Choose a different folder or filter to browse other clips." : (query.isEmpty && filter == .all ? "Copy text, an image, a link or a file. It will float right here." : "Try another word or a different filter."))
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
             if !model.isCapturing && !model.isDemo {
                 Button("Start Capture") { model.toggleCapture() }.buttonStyle(.borderedProminent)
@@ -509,8 +576,29 @@ struct QuickPicker: View {
 
     private func closeWorkflow() {
         draft = nil
+        folderDraft = nil
+        removingFolder = nil
         showsBatch = false
         searchFocused = true
+    }
+
+    private func saveFolder() -> String? {
+        guard let folderDraft else { return nil }
+        do {
+            let id = try model.saveFolder(name: folderDraft.name, id: folderDraft.folderID, moving: folderDraft.clipID)
+            folderScope = .folder(id)
+            query = ""
+            filter = .all
+            closeWorkflow()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func copyColor(_ text: String) {
+        let clip = ClipEntry(kind: .text, text: text, sourceName: "Color", sourceBundleID: CapturePolicy.ownBundleID)
+        onChoose(clip, true)
     }
 
     private func indexImages(_ entries: [ClipEntry]) async {
@@ -538,9 +626,11 @@ private struct FlightCard: View {
     @State private var tilt = CGPoint.zero
     var body: some View {
         let previewText = String((entry.text ?? "").prefix(8_000))
+        let color = entry.hexColor
+        let kindLabel = color == nil ? entry.kind.label : "Color"
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label(entry.kind.label, systemImage: entry.kind.symbol).font(.system(size: 10, weight: .semibold))
+                Label(kindLabel, systemImage: color == nil ? entry.kind.symbol : "paintpalette").font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(entry.kind == .image || entry.kind == .file ? Palette.violet : Palette.mint)
                 Spacer()
                 if let number { Text("⌘\(number)").font(.system(size: 9, design: .monospaced)).foregroundStyle(Palette.secondary) }
@@ -558,11 +648,8 @@ private struct FlightCard: View {
                         Image(systemName: "arrow.up.right").font(.system(size: 32, weight: .ultraLight)).foregroundStyle(Palette.violet)
                         Text(entry.displayTitle).font(.system(size: 20, weight: .medium, design: .rounded)).lineLimit(3)
                         Text(URL(string: entry.text ?? "")?.host ?? "Link").font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1)
-                    } else if let swatch = hexSwatch(previewText) {
-                        RoundedRectangle(cornerRadius: 12).fill(swatch).frame(height: 136)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15)))
-                            .accessibilityHidden(true)
-                        Text(previewText).font(.system(size: 18, weight: .medium, design: .monospaced))
+                    } else if let color {
+                        ColorSwatch(color: color)
                     } else if PreviewFormatting.isMarkdown(previewText) {
                         MarkdownPreview(source: previewText).frame(maxHeight: 190).clipped()
                     } else if PreviewFormatting.isCode(previewText) {
@@ -574,7 +661,7 @@ private struct FlightCard: View {
                     Spacer(minLength: 0)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).contentShape(Rectangle())
             }.buttonStyle(.plain).padding(.horizontal, 18)
-                .accessibilityLabel("Paste \(entry.kind.label.lowercased()) from \(entry.sourceName): \(String(entry.displayTitle.prefix(90)))")
+                .accessibilityLabel("Paste \(kindLabel.lowercased()) from \(entry.sourceName): \(String(entry.displayTitle.prefix(90)))")
                 .accessibilityAddTraits(selected ? .isSelected : [])
             HStack {
                 Text(entry.sourceName).lineLimit(1)
@@ -594,16 +681,4 @@ private struct FlightCard: View {
             }
     }
 
-    private func hexSwatch(_ text: String) -> Color? {
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let digits = value.dropFirst()
-        guard value.first == "#", digits.count == 3 || digits.count == 6,
-              digits.allSatisfy(\.isHexDigit), let code = UInt32(digits, radix: 16) else { return nil }
-        if digits.count == 3 {
-            return Color(red: Double((code >> 8) & 15) / 15,
-                green: Double((code >> 4) & 15) / 15, blue: Double(code & 15) / 15)
-        }
-        return Color(red: Double((code >> 16) & 255) / 255,
-            green: Double((code >> 8) & 255) / 255, blue: Double(code & 255) / 255)
-    }
 }

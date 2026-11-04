@@ -1,6 +1,6 @@
 # Security model
 
-CopyTaste 0.3.0 reduces accidental retention of sensitive copies.
+CopyTaste reduces accidental retention of sensitive copies.
 
 ## Capture boundary
 

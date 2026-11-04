@@ -129,7 +129,7 @@ final class AppIntegrationTests: XCTestCase {
     @MainActor func testCollectionLifecycleAndSearch() async throws {
         let model = AppModel(demo: true)
         let entry = try XCTUnwrap(model.snapshot.entries.first)
-        model.createCollection("Research")
+        try model.saveFolder(name: "Research")
         let collection = try XCTUnwrap(model.snapshot.collections.first { $0.name == "Research" })
         model.move(entry, to: collection.id)
         XCTAssertEqual(model.visibleEntries.count, 1)
@@ -152,5 +152,25 @@ final class AppIntegrationTests: XCTestCase {
         model.clearHistory()
         XCTAssertTrue(model.snapshot.entries.isEmpty)
         model.shutdown()
+    }
+
+    @MainActor func testFolderCreationRenameAndRemovalKeepTheClipAndRejectStaleMoves() async throws {
+        let model = AppModel(demo: true)
+        defer { model.shutdown() }
+        let original = try XCTUnwrap(model.snapshot.entries.first { $0.collectionID == nil })
+        XCTAssertThrowsError(try model.saveFolder(name: "Missing clip", moving: UUID()))
+        XCTAssertFalse(model.snapshot.collections.contains { $0.name == "Missing clip" })
+        let id = try model.saveFolder(name: "References", moving: original.id)
+        XCTAssertThrowsError(try model.saveFolder(name: "references"))
+        try model.saveFolder(name: "Reference shelf", id: id)
+        XCTAssertEqual(model.snapshot.collections.first(where: { $0.id == id })?.name, "Reference shelf")
+        let filed = try XCTUnwrap(model.snapshot.entries.first { $0.id == original.id })
+        XCTAssertTrue(FolderScope.folder(id).includes(filed))
+        XCTAssertFalse(FolderScope.unfiled.includes(filed))
+        XCTAssertTrue(model.deleteCollection(id))
+        model.move(filed, to: id)
+        let unfiled = try XCTUnwrap(model.snapshot.entries.first { $0.id == original.id })
+        XCTAssertTrue(FolderScope.unfiled.includes(unfiled))
+        XCTAssertEqual(unfiled.fingerprint, original.fingerprint)
     }
 }

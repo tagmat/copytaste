@@ -56,7 +56,7 @@ public enum History {
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return entries }
         return entries.filter { entry in
-            let fields = [entry.title, entry.text, entry.fileName, entry.sourceName, imageText[entry.id]]
+            let fields = [entry.title, entry.text, entry.fileName, entry.sourceName, imageText[entry.id], entry.hexColor?.hex]
             return words.allSatisfy { word in fields.contains { $0?.localizedStandardContains(word) == true } }
         }
     }

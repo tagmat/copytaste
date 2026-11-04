@@ -45,8 +45,8 @@ open -n dist/CopyTaste.app --args --demo
 - **Command-1 through Command-9:** paste one of the nine newest matching clips. Cards show their shortcut.
 - **Command-E:** edit the selected clip or rename an image or file. **Command-N:** create a text snippet.
 - **Command-B:** add or remove the selected text or link in the current batch. Open **Batch** to review the order, choose a separator and paste or copy it as one block.
-- Filter All, Pinned, Text, Links, Images or Files. The folder menu filters collections.
-- Right-click a card to copy, assign a collection or delete it.
+- Filter All, Pinned, Text, Links, Images, Files or Colors. The **Folders** menu narrows any filter to a folder or to Unfiled.
+- Right-click a card to copy, move it to a folder or delete it.
 
 Change or turn off the global shortcut in **Advanced Settings → On your Mac**. The menu bar still opens the selector.
 
@@ -83,7 +83,15 @@ Files are supported up to **8 MB per file**, within the **24 MB history budget**
 
 Markdown clips and `.md` files preview headings, emphasis, lists, quotes and fenced code. Recognised source files and code-like clips colour keywords, strings, comments, numbers and function calls. Formatting is a bounded preview rather than a full editor or language parser. Links are inert, remote images are never loaded, and code is never executed.
 
-Plain text previews are bounded and the full saved text remains available for pasting. Standalone `#RGB` and `#RRGGBB` values show a colour swatch.
+Plain text previews are bounded and the full saved text remains available for pasting.
+
+## Colors and folders
+
+Standalone `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA` values appear in **Colors**. Cards display expanded hex and CSS RGB values, with a checkerboard behind transparent swatches. Right-click a card to copy either format. Return still pastes the original text.
+
+![Three synthetic color swatches rendered with CopyTaste components](docs/media/colors.png)
+
+Open **Folders** to browse by name or see **Unfiled** clips. Create a folder in the menu or choose **Move to Folder → New Folder…** from a clip to create and file it in one step. Choose a folder to rename or remove it. Removing a folder moves its clips to **Unfiled**. Existing collections appear as folders.
 
 Files are captured one at a time. Directories, symlinks, multi-file copies, common key/vault formats and sensitive filenames are skipped. Recognised text files also pass the secret filter and 512 KiB text limit. Binary documents and images are not scanned for every possible secret; exclude sensitive applications and pause capture for private workflows.
 

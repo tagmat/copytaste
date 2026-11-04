@@ -57,7 +57,7 @@ components:
 
 ## Overview
 
-CopyTaste by tagmat lives in the menu bar. Its English-language primary surface is a transparent floating selector: a search capsule, pinned clips on the left, a recent-card fan on the right and a compact control strip. A configurable orbit layout combines clips in one fan. Quick settings open in an anchored menu-bar bubble. A regular window is reserved for advanced storage, privacy, collections and retention settings. There is no main history workspace.
+CopyTaste by tagmat lives in the menu bar. Its English-language primary surface is a transparent floating selector: a search capsule, pinned clips on the left, a recent-card fan on the right and a compact control strip. A configurable orbit layout combines clips in one fan. Quick settings open in an anchored menu-bar bubble. A regular window is reserved for advanced storage, privacy, folders and retention settings. There is no main history workspace.
 
 RAM remains the default, with optional encrypted local, custom-folder or iCloud Drive storage. The selector and bubble name the actual storage state. First launch requires capture opt-in; sample clips use an isolated session.
 
@@ -96,6 +96,10 @@ Choosing a fan card flings it 160 points upward while other fan cards drop 95 an
 **Interaction.** Command-Shift-V opens the selector by default. The advanced shortcut picker also offers Option-Command-V, Control-Option-V and Off. The menu-bar bubble shows the active shortcut when enabled. Arrow keys, mouse wheel and trackpad scrolling navigate. Scroll handling is local to the open selector, follows the dominant axis and ignores momentum. Precise scrolling accumulates 28 points per step, with a 90 ms minimum between steps.
 
 Return and card activation paste when enabled. Option-Return copies only. Command-1 through Command-9 choose the nine newest matches in either layout. Visible cards in that set show a muted monospaced shortcut hint beside the pin. Command-P, card pins and filters keep the selector open. Escape dismisses the selector or returns from an inline workflow to search. Icon actions have accessible names. Selected cards expose a summary and selected state.
+
+The filter strip includes Colors and a Folders menu. The menu shows the active scope and clip counts, with Unfiled alongside named folders. Creating or renaming a folder uses a 400-point inline editor with a focused name field. Removal uses the same surface and explains that clips move to Unfiled.
+
+Color cards show an expanded hex label and a smaller monospaced CSS RGB value. A 118-point swatch uses a 12-point corner radius. Translucent colors expose a checkerboard underneath.
 
 **Inline workflows.** The editor and batch preview replace the cards inside the same floating panel. Both use a 440-point frosted surface with 22-point padding and 18-point corners. Command-E or the card menu opens the editor. Command-N or New opens a snippet draft. The editor has an optional title and a 150-point text area for editable text and links. Image and file clips can be renamed. Validation appears inline in violet. Save or Cancel returns focus to search.
 
