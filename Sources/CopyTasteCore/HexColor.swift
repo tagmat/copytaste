@@ -9,12 +9,12 @@ public struct HexColor: Equatable, Sendable {
     public init?(_ text: String) {
         guard text.utf8.prefix(65).count <= 64 else { return nil }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard value.first == "#" else { return nil }
-        let digits = value.dropFirst().utf8
-        let count = digits.count
-        guard [3, 4, 6, 8].contains(count),
-              digits.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
-              let code = UInt32(value.dropFirst(), radix: 16) else { return nil }
+        let prefixed = value.hasPrefix("#")
+        let digits = prefixed ? value.dropFirst() : value[...]
+        let count = digits.utf8.count
+        guard count == 6 || (prefixed && [3, 4, 8].contains(count)),
+              digits.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
+              let code = UInt32(digits, radix: 16) else { return nil }
         let shorthand = count <= 4
         let hasAlpha = count == 4 || count == 8
         let bitsPerChannel = shorthand ? 4 : 8

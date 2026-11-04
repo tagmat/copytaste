@@ -22,4 +22,12 @@ final class HexColorTests: XCTestCase {
         XCTAssertNil(HexColor("#abcd0"))
         XCTAssertEqual(History.search([clip], query: "#BBDDFF").first?.text, "#bdf")
     }
+
+    func testUnprefixedHexRequiresExactlySixDigits() {
+        XCTAssertEqual(HexColor(" bDf27c\n")?.hex, "#BDF27C")
+        XCTAssertEqual(HexColor("123456")?.hex, "#123456")
+        for invalid in ["f9b", "abcd", "abcde", "abcdef80", "0xF9FF20", "BZ1280", "RGB F9FF20"] {
+            XCTAssertNil(HexColor(invalid), invalid)
+        }
+    }
 }

@@ -111,6 +111,24 @@ final class MonitorIntegrationTests: XCTestCase {
         }
     }
 
+    @MainActor func testCapturesBareHexColorWithoutCapturingNumericVerificationCode() async throws {
+        try withMonitor { monitor, board in
+            var captured: [ClipEntry] = []
+            var rejected: [RejectionReason] = []
+            monitor.onCapture = { captured.append($0) }
+            monitor.onRejection = { rejected.append($0) }
+            for value in ["bDf27c", "123456"] {
+                board.clearContents()
+                XCTAssertTrue(board.setString(value, forType: .string))
+                monitor.poll()
+            }
+            XCTAssertEqual(captured.map(\.text), ["bDf27c"])
+            XCTAssertTrue(captured.first.map(PickerFilter.colors.includes) == true)
+            XCTAssertEqual(History.search(captured, query: "#BDF27C").first?.text, "bDf27c")
+            XCTAssertEqual(rejected, [.secret])
+        }
+    }
+
     @MainActor func testMonitorRejectsMarkedPayloadAndSecrets() async throws {
         try withMonitor { monitor, board in
             var captured: [ClipEntry] = []

@@ -87,7 +87,7 @@ Plain text previews are bounded and the full saved text remains available for pa
 
 ## Colors and folders
 
-Standalone `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA` values appear in **Colors**. Cards display expanded hex and CSS RGB values, with a checkerboard behind transparent swatches. Right-click a card to copy either format. Return still pastes the original text.
+Standalone `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA` values appear in **Colors**. Six-character codes such as `BDF27C` also work without the prefix. Add `#` when the code contains only digits, since automatic capture excludes possible verification codes. Cards display expanded hex and CSS RGB values, with a checkerboard behind transparent swatches. Right-click a card to copy either format. Return still pastes the original text.
 
 ![Three synthetic color swatches rendered with CopyTaste components](docs/media/colors.png)
 

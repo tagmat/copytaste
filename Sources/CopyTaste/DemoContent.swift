@@ -12,7 +12,7 @@ enum DemoContent {
             ClipEntry(kind: .link, text: "https://developer.apple.com/swift/", sourceName: "Safari", sourceBundleID: "com.apple.Safari", createdAt: now.addingTimeInterval(-480), title: "The language of possibility"),
             ClipEntry(kind: .text, text: "struct SmallThings {\n    let worthKeeping: [String]\n\n    func revisit() -> String {\n        worthKeeping.joined(separator: \" · \")\n    }\n}", sourceName: "Xcode", sourceBundleID: "com.apple.dt.Xcode", createdAt: now.addingTimeInterval(-900), isPinned: true, title: "SmallThings.swift"),
             ClipEntry(kind: .image, imageData: palette(), sourceName: "Preview", sourceBundleID: "com.apple.Preview", createdAt: now.addingTimeInterval(-1500), collectionID: collection.id, title: "An afternoon palette"),
-            ClipEntry(kind: .text, text: "#BDF27C", sourceName: "Notes", sourceBundleID: "com.apple.Notes", createdAt: now.addingTimeInterval(-2_000), collectionID: paletteFolder.id),
+            ClipEntry(kind: .text, text: "BDF27C", sourceName: "Notes", sourceBundleID: "com.apple.Notes", createdAt: now.addingTimeInterval(-2_000), collectionID: paletteFolder.id),
             ClipEntry(kind: .text, text: "#5F65E7A0", sourceName: "Notes", sourceBundleID: "com.apple.Notes", createdAt: now.addingTimeInterval(-2_100), collectionID: paletteFolder.id),
             ClipEntry(kind: .text, text: "#F9B", sourceName: "Notes", sourceBundleID: "com.apple.Notes", createdAt: now.addingTimeInterval(-2_200)),
             ClipEntry(kind: .text, text: "Leave a little space between one idea and the next. That's usually where the interesting part happens.", sourceName: "TextEdit", sourceBundleID: "com.apple.TextEdit", createdAt: now.addingTimeInterval(-2500), title: "Space to think"),
