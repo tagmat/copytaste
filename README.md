@@ -1,87 +1,116 @@
 # CopyTaste
 
-A little room for the good bits. **CopyTaste by tagmat** is a native, open source clipboard manager for macOS. Search text, links and images, pin the useful ones and organise them into collections.
+**CopyTaste by tagmat** is a native, open source clipboard utility for macOS. It lives in the menu bar. Press **⇧⌘V** and your clips spread into a floating card orbit: search, move through the cards, pin a favourite and paste it into the app you came from.
 
-**History stays in RAM by default.** Capture starts only after you enable it. Quitting, locking the history, screen locking or sleeping discards the in-memory session.
+History stays in RAM by default. Capture starts only after you enable it. The menu-bar icon opens quick settings; the gear opens advanced settings when you need them.
+
+![CopyTaste floating selector with synthetic sample clips](docs/media/selector.png)
+
+*The optional single-orbit layout. All screenshots use fictional sample clips in an isolated preview session.*
+
+| Keep close | Move quickly | Choose what stays |
+| --- | --- | --- |
+| Pinned clips on the left, newest copies on the right | Scroll, search, use arrow keys, then Return to paste | RAM by default; encrypted local, folder or iCloud options |
+| Image, PDF and file thumbnails | Spring-driven cards with depth and a fly-away selection | Private-app exclusions, secret filters and retention |
+| Markdown previews and syntax-coloured code | Menu-bar bubble for everyday controls | No accounts, analytics or remote preview requests |
+
+![Synthetic interface tour of CopyTaste](docs/media/interface-tour.gif)
+
+*A looping tour assembled from application screenshots, not a recording of the card animations. Media contains sample data only and is reencoded without source metadata.*
 
 ## Run
 
 Requires macOS 14 or later and Xcode 16 or later (Swift 6). No third-party packages are needed.
 
 ```sh
-./scripts/build-app.sh
+./scripts/build-app.sh --universal
 open dist/CopyTaste.app
 ```
 
-Move the app to Applications for regular use and login-item support. The local build has an ad-hoc signature. A public download needs a Developer ID signature and Apple notarisation; see [distribution](docs/DISTRIBUTION.md).
+The build creates `dist/CopyTaste.app` and a clean `dist/CopyTaste-macOS.zip` with arm64 and x86_64 slices. Move the app to Applications for regular use. The local build is ad-hoc signed; public distribution needs Developer ID signing and notarisation. See [distribution](docs/DISTRIBUTION.md).
 
-The build also creates `dist/CopyTaste-macOS.zip`, packaged from a clean staging directory. Use this archive when moving or sharing the app; folder-sync providers can attach extra Finder metadata to a loose `.app` bundle.
-
-To explore without touching your real clipboard or storage:
+The menu-bar bubble offers **Try sample clips**. Samples use an isolated pasteboard and never post paste events. You can also run:
 
 ```sh
 open -n dist/CopyTaste.app --args --demo
 ```
 
-The demo contains labelled synthetic clips, has capture disabled, uses its own named pasteboard and never opens a saved vault. You can also open a separate sample window from **Help → Explore Sample History**.
+## A smaller desktop workflow
 
-## Everyday use
+- **⇧⌘V:** open or close the floating selector from another app.
+- **Type:** search text, titles, source apps and file names.
+- **Scroll or arrow keys:** move through the cards; **Return:** paste the selected clip.
+- **Option-Return:** copy without automatic paste. **Escape:** dismiss.
+- **Command-P:** pin or unpin the selection. Each card also has a pin button.
+- Filter All, Pinned, Text, Links, Images or Files. The folder menu filters collections.
+- Right-click a card to copy, assign a collection or delete it.
 
-- Open the animated quick picker with **⇧⌘V** from any app. Type to search, use **↑ / ↓** to choose, **Return** to copy and **Escape** to dismiss. Pin items directly in the picker.
-- Open the complete history from the menu bar. The picker returns focus to your previous app; use **⌘V** to paste.
-- Search with **⌘F**. Use the history list to navigate, then **⌘Return** to copy.
-- Paste into your destination app with **⌘V**. No Accessibility permission is required.
-- Pin clips, create collections with the sidebar **+**, and move items from the preview or context menu.
-- Pause capture with **⇧⌘P**. Lock with **⇧⌘L**.
-- By default, a clip copied from CopyTaste is cleared from the system clipboard after 45 seconds, only if nothing newer has replaced it.
+The default **Pinned + recent** layout keeps a small pin stack on the left and chronological cards on the right. Open **Show all pins** for the complete pinned collection. Choose **Single orbit** in the menu-bar bubble or advanced settings to combine everything in one chronological stream. Wheel and trackpad gestures move selection while the selector is open.
 
-Closing the window keeps CopyTaste running in the menu bar. Use **Quit CopyTaste** to end the session. Memory mode clears the complete history on quit or lock, including pins and collections.
+Cards fan out with staggered springs, respond to pointer movement, move through depth when selection changes and fly away on choosing. Reduce Motion removes the flight, tilt and scale animations. Controls keep a dark substrate so text remains readable over bright or dark desktops.
+
+<details>
+<summary>Quick settings and file previews</summary>
+
+![Menu-bar quick settings using sample data](docs/media/quick-settings.png)
+
+![File cards with a local PDF thumbnail](docs/media/files.png)
+
+</details>
+
+## Direct paste
+
+**Paste on selection** is enabled by default. Open the menu-bar bubble and choose **Enable Direct Paste** to grant macOS Accessibility access. CopyTaste only sends Command-V to the original destination process after checking permission, secure input, activation and session validity. It does not install a global keystroke logger.
+
+If access is missing, a destination disappears or focus changes, the item is copied instead and no paste is sent to an unrelated app. Copy-only remains available. The sample selector never activates a destination or sends keyboard events. Real destination support depends on the receiving app and the selected content type.
+
+## Images, files and small previews
+
+Version 0.2 fixes mixed clipboard items: real PNG/TIFF/JPEG/HEIC/GIF/WebP/BMP image data takes precedence over accompanying URL or text. Image capture is enabled in 0.2, including the migration from 0.1's disabled default. An explicit opt-out made in 0.2 survives relaunch. Disabling image capture skips a mixed image item completely instead of silently retaining its URL. A URL-only copy remains a link; the app never downloads the remote image.
+
+Files are supported up to **8 MB per file**, within the **24 MB history budget**. Image files and PDFs show small thumbnails; UTF-8 text files show an excerpt; other types, including documents and archives, show the system file-type icon, name and size. A file is pasted as a file URL, not as its filename text.
+
+Markdown clips and `.md` files preview headings, emphasis, lists, quotes and fenced code. Recognised source files and code-like clips colour keywords, strings, comments, numbers and function calls. Formatting is a bounded preview rather than a full editor or language parser. Links are inert, remote images are never loaded, and code is never executed.
+
+Files are captured one at a time. Directories, symlinks, multi-file copies, common key/vault formats and sensitive filenames are skipped. Recognised text files also pass the secret filter and 512 KiB text limit. Binary documents and images are not scanned for every possible secret; exclude sensitive applications and pause capture for private workflows.
+
+File contents stay in RAM or the chosen encrypted history. **Pasting or copying a file creates an owner-only temporary transfer file** for the destination. It expires after five minutes, and Clear History, lock and quit remove it sooner. That on-demand transfer is separate from history persistence. Clipboard output is otherwise cleared after 45 seconds by default, only if nothing newer replaced it.
 
 ## Choose what stays
 
-Settings offers four storage locations and an optional pinned-only rule:
-
-| Setting | Clipboard content | On quit or lock |
+| Setting | Storage | On quit or lock |
 | --- | --- | --- |
-| Memory only — default | RAM; no vault or key created | Discarded |
-| Encrypted vault on this Mac | AES-256-GCM file in Application Support | Saved history remains encrypted |
-| Encrypted vault in a chosen folder | AES-256-GCM file in that folder | Saved history remains encrypted |
-| iCloud Drive sync | Shared, passphrase-encrypted vault in iCloud Drive | Synced history remains encrypted |
-| Save pinned items only | Only pins go into the selected encrypted vault | Other clips are discarded |
+| Memory only — default | Process memory | Session discarded |
+| Encrypted on this Mac | AES-256-GCM in Application Support | Saved history remains encrypted |
+| Encrypted in a folder | AES-256-GCM in your chosen folder | Saved history remains encrypted |
+| iCloud Drive sync | Shared passphrase-encrypted file | Synced history remains encrypted |
+| Save pinned items only | Optional rule for local encrypted vaults | Other clips are discarded |
 
-Apply storage changes explicitly. CopyTaste writes the new encrypted vault before removing the old active local vault; it refuses to replace an unrelated local vault. Switching to memory removes the active local saved vault. Disconnecting iCloud leaves its shared encrypted file for other devices. File removal cannot erase copies made by backups, snapshots or a folder-sync provider.
+Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 clips. Expiration is checked during use and on reopening; a closed app cannot run background deletions. Memory mode clears pins and collections on lock or quit too. macOS may page memory to disk; use FileVault to protect your Mac.
 
-Local encrypted storage uses a non-synchronising 256-bit Keychain key. Opening saved history requires Mac authentication. A local vault file by itself is not a portable backup: **losing the keychain means losing access to that saved history**. A chosen folder may also transfer encrypted files through its provider.
+Local vaults use a non-synchronising Keychain key. Opening saved history requires Mac authentication. A copied local vault requires the original keychain; losing that key loses access. Apply storage changes explicitly. The new vault is written before the old active local vault is removed. Backups and filesystem snapshots cannot be revoked by the app.
 
 ## iCloud sync
 
-Choose **iCloud Drive · encrypted sync** in Settings and enter a separate sync passphrase of at least 16 characters. Enable the same option with the same passphrase on another Mac signed into the same iCloud account. macOS iCloud Drive must already be enabled; CopyTaste does not change your account settings.
+In advanced settings, choose **iCloud Drive · encrypted sync**, enter a unique phrase of at least 16 characters and use the same phrase on every Mac. iCloud Drive must already be enabled in macOS. Update all participating Macs to 0.2 before syncing file entries.
 
-Clips, pins and collections are merged through `iCloud Drive/CopyTaste/history.copytaste`. The payload is encrypted with AES-256-GCM before writing. Its key is derived locally from the passphrase using PBKDF2-HMAC-SHA256 (600,000 iterations and a random salt). **The passphrase is not saved and cannot be recovered.** Re-enter it after locking or relaunching. iCloud mode syncs all retained entries; pinned-only saving is available for local vaults.
+Clips, files, pins and collections are merged through `iCloud Drive/CopyTaste/history.copytaste`. Data is encrypted before writing using AES-256-GCM and a PBKDF2-HMAC-SHA256 key (600,000 iterations, random salt). The phrase is not saved and cannot be recovered; enter it after locking or restarting.
 
-The app checks for merges every six seconds while open and unlocked, coordinates file access and merges unresolved iCloud conflict versions. Deletions and clear-history boundaries travel with the encrypted data, preventing an offline peer from restoring older removed clips. macOS handles actual network delivery; “Last local merge” confirms local file processing, not delivery to another device. Offline local iCloud writes can upload later. Disconnecting does not delete the shared file. Paused capture does not pause sync; lock to unload keys and stop both.
+Merges run every six seconds while open and unlocked, coordinate file access and combine unresolved iCloud conflict versions. Deletions prevent stale peers restoring removed items. macOS handles network delivery: the local-merge time does not certify arrival on another device. Disconnecting leaves the shared encrypted file for other Macs. Paused capture does not pause sync; lock to stop both and unload the session.
 
-The portable encryption and merge protocol is tested using isolated temporary files. Live delivery, account access, downloaded placeholders and conflict-version behaviour require testing with an iCloud account on two Macs. The app has no custom server, analytics endpoint or automatic update connection.
+The merge and encryption protocol is tested with isolated temporary files. Live delivery, account access and iCloud conflict handling still need two-Mac validation. There are no app accounts, analytics, remote previews, content logs or custom sync servers.
 
-Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 entries. A 24 MB content budget also applies. Expiration is checked during use and on reopening a saved vault; a closed app cannot run background deletions.
+## Privacy and development
 
-## Privacy controls
-
-Protected application bundle families, private clipboard markers, secure input and uncertain foreground transitions are excluded before reading payloads. Additional filters reject common credentials, private keys, tokens, short numeric codes, credential-bearing URLs and Luhn-valid payment numbers. Add your own excluded applications in Settings; existing entries attributed to a newly excluded app are removed from active history.
-
-Images are disabled by default because their contents are not scanned for secrets. Enable them explicitly if needed. Rich text is stored as plain text; file copies, multiple simultaneous clipboard items and oversized payloads are skipped.
-
-macOS does not provide a trustworthy owner identity for every clipboard change. Foreground attribution and content filters cannot identify every password, especially ordinary text from a browser or background application. Exclude sensitive apps and pause capture for private workflows. Read the [security model](SECURITY.md) for the precise boundaries.
-
-There are no app accounts, telemetry, remote previews, content logs or third-party runtime dependencies. Optional sync uses your existing macOS iCloud Drive account.
-
-## Develop
+Private clipboard markers, credential applications, secure input, uncertain source transitions and common secret patterns are excluded before persistence. Source attribution is best effort; macOS does not authenticate every clipboard writer. Read [SECURITY.md](SECURITY.md) for the exact boundaries.
 
 ```sh
 ./scripts/test.sh
 ./scripts/build-app.sh --universal
 ```
 
-The test suite covers capture policy, secret fixtures, history limits, encrypted storage and native named-pasteboard integration. Native pasteboard tests require a logged-in macOS GUI session. Test files use unique temporary directories and are removed afterward. See [testing](docs/TESTING.md), [architecture](docs/ARCHITECTURE.md) and [contributing](CONTRIBUTING.md).
+Tests use synthetic content, private named pasteboards and temporary files. They never access the general clipboard, Keychain or real iCloud account, and direct-paste tests inject an event sink rather than sending real input. See [testing](docs/TESTING.md), [architecture](docs/ARCHITECTURE.md) and [contributing](CONTRIBUTING.md).
 
-Licensed under the [MIT License](LICENSE). © 2026 tagmat.
+Screenshot exports are produced from the isolated sample session. `scripts/sanitize-readme-image.swift` reencodes PNG pixels, and `scripts/make-readme-gif.swift` assembles the illustrated tour without carrying capture metadata.
+
+[MIT License](LICENSE). © 2026 tagmat.

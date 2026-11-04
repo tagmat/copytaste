@@ -1,275 +1,109 @@
 ---
 name: CopyTaste
-description: A native Mac clipboard library with warm paper surfaces and a clear memory boundary.
+description: A spatial clipboard selector and menu-bar utility for macOS.
 colors:
-  rail: "#243D34"
-  rail-secondary: "#C7D3C9"
-  canvas: "#F7F6F0"
-  paper: "#FEFDF9"
-  ink: "#242D28"
-  secondary: "#626A61"
-  accent: "#A6442F"
-  selection: "#E5EBDD"
-  divider: "#E0E2D8"
-  white: "#FFFFFF"
-  brand-gold: "color(srgb 0.88 0.76 0.51)"
-  rail-selected: "rgba(255, 255, 255, 0.13)"
-  rail-card: "rgba(255, 255, 255, 0.065)"
+  background: "color(srgb 0.055 0.072 0.085)"
+  surface: "color(srgb 0.085 0.105 0.12)"
+  raised: "color(srgb 0.13 0.16 0.18)"
+  text: "color(srgb 0.94 0.97 0.96)"
+  secondary: "color(srgb 0.65 0.72 0.75)"
+  mint: "color(srgb 0.74 1 0.53)"
+  violet: "color(srgb 0.73 0.65 1)"
+  code-number: "color(srgb 0.96 0.81 0.57)"
+  code-function: "color(srgb 0.55 0.88 0.9)"
 typography:
-  display: {fontFamily: "ui-serif, serif", fontSize: "44pt", fontWeight: 500, letterSpacing: "-1pt"}
-  locked-title: {fontFamily: "ui-serif, serif", fontSize: "30pt", fontWeight: 500}
-  section-title: {fontFamily: "ui-serif, serif", fontSize: "28pt", fontWeight: 500}
-  preview: {fontFamily: "ui-serif, serif", fontSize: "25pt", fontWeight: 400}
-  page-title: {fontFamily: "system-ui, sans-serif", fontSize: "24pt", fontWeight: 600, letterSpacing: "-0.5pt"}
-  empty-title: {fontFamily: "ui-serif, serif", fontSize: "22pt", fontWeight: 400}
-  brand: {fontFamily: "ui-rounded, system-ui, sans-serif", fontSize: "20pt", fontWeight: 600}
-  picker-search: {fontFamily: "system-ui, sans-serif", fontSize: "18pt", fontWeight: 400}
-  settings-label: {fontFamily: "system-ui, sans-serif", fontSize: "15pt", fontWeight: 600}
-  body: {fontFamily: "system-ui, sans-serif", fontSize: "14pt", fontWeight: 400}
-  code: {fontFamily: "ui-monospace, monospace", fontSize: "14pt", fontWeight: 400}
-  clip-title: {fontFamily: "system-ui, sans-serif", fontSize: "13pt", fontWeight: 600}
-  label: {fontFamily: "system-ui, sans-serif", fontSize: "12pt", fontWeight: 400}
-  caption: {fontFamily: "system-ui, sans-serif", fontSize: "11pt", fontWeight: 400}
-  metadata: {fontFamily: "system-ui, sans-serif", fontSize: "10pt", fontWeight: 400}
-  micro: {fontFamily: "system-ui, sans-serif", fontSize: "9pt", fontWeight: 400}
+  heading: {fontFamily: "ui-rounded, system-ui", fontSize: "24pt", fontWeight: 600}
+  empty: {fontFamily: "ui-rounded, system-ui", fontSize: "22pt", fontWeight: 500}
+  brand: {fontFamily: "ui-rounded, system-ui", fontSize: "20pt", fontWeight: 600}
+  link: {fontFamily: "ui-rounded, system-ui", fontSize: "20pt", fontWeight: 500}
+  clip: {fontFamily: "ui-rounded, system-ui", fontSize: "18pt", fontWeight: 500}
+  search: {fontFamily: "system-ui", fontSize: "17pt", fontWeight: 400}
+  section: {fontFamily: "system-ui", fontSize: "15pt", fontWeight: 600}
+  file-name: {fontFamily: "system-ui", fontSize: "15pt", fontWeight: 500}
+  control: {fontFamily: "system-ui", fontSize: "12pt", fontWeight: 400}
+  code: {fontFamily: "ui-monospace, monospace", fontSize: "11pt", fontWeight: 400}
+  markdown-heading: {fontFamily: "ui-rounded, system-ui", fontSize: "17pt", fontWeight: 600}
+  filter: {fontFamily: "system-ui", fontSize: "11pt", fontWeight: 500}
+  metadata: {fontFamily: "system-ui", fontSize: "10pt", fontWeight: 400}
 rounded:
-  thumbnail: "4pt"
-  control: "8pt"
-  picker-row: "9pt"
-  clip-row: "10pt"
-  preview: "12pt"
-  panel: "18pt"
+  code-block: "7pt"
+  thumbnail: "10pt"
+  image: "12pt"
+  quick-action: "13pt"
+  hint-strip: "17pt"
+  settings-section: "18pt"
+  card: "22pt"
+  filter-strip: "24pt"
+  search: "25pt"
 spacing:
-  compact: "4pt"
-  small: "8pt"
-  inset: "10pt"
+  compact: "6pt"
+  small: "10pt"
   standard: "12pt"
-  row-inset: "14pt"
-  medium: "16pt"
-  loose: "18pt"
-  section-inset: "20pt"
-  list-inset: "22pt"
-  section: "24pt"
-  detail-gap: "28pt"
-  detail-inset: "30pt"
-  page-inset: "32pt"
-  welcome-inset: "40pt"
+  control: "14pt"
+  card: "18pt"
+  section: "20pt"
+  page: "30pt"
+  empty: "32pt"
 components:
-  button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.white}"
-  navigation-selected:
-    backgroundColor: "{colors.rail-selected}"
-    textColor: "{colors.white}"
-    rounded: "{rounded.control}"
-    padding: "10pt 12pt"
-  search:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.control}"
-    padding: "10pt"
-    width: "240pt"
-  clip:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.clip-row}"
-    padding: "14pt"
-  clip-selected:
-    backgroundColor: "{colors.selection}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.clip-row}"
-    padding: "14pt"
-  storage-card:
-    backgroundColor: "{colors.rail-card}"
-    textColor: "{colors.white}"
-    rounded: "{rounded.clip-row}"
-    padding: "14pt"
-  picker:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.panel}"
-    width: "650pt"
-    height: "460pt"
-  picker-row-selected:
-    backgroundColor: "{colors.selection}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.picker-row}"
-    padding: "13pt 14pt"
+  flight-card: {backgroundColor: "{colors.surface}", textColor: "{colors.text}", rounded: "{rounded.card}", width: "278pt", height: "300pt"}
+  search: {textColor: "{colors.text}", typography: "{typography.search}", rounded: "{rounded.search}", padding: "14pt"}
+  quick-action: {backgroundColor: "{colors.mint}", textColor: "{colors.background}", rounded: "{rounded.quick-action}", padding: "14pt"}
+  settings-section: {backgroundColor: "{colors.surface}", textColor: "{colors.text}", rounded: "{rounded.settings-section}", padding: "20pt"}
 ---
 
-# Design System: CopyTaste
+# CopyTaste — spatial desktop utility
 
 ## Overview
 
-**Creative North Star: "The Colour Specimen Book"**
+CopyTaste by tagmat lives in the menu bar. Its English-language primary surface is a transparent floating selector: a search capsule, pinned clips on the left, a recent-card fan on the right and a compact control strip. A configurable orbit layout combines clips in one fan. Quick settings open in an anchored menu-bar bubble. A regular window is reserved for advanced storage, privacy, collections and retention settings. There is no main history workspace.
 
-CopyTaste by tagmat is an English-language native Mac application. Forest navigation, warm paper surfaces, dark ink and a restrained terracotta accent give copied material the feel of useful specimens in a compact working library. The history index stays dense; the selected clip gets a quieter, more generous reading surface.
-
-The implemented SwiftUI and AppKit screens define this system. Native controls, system fonts and familiar keyboard behaviour carry the interaction. The persistent storage card and footer make the memory boundary visible: history lives in RAM by default, with optional encrypted local, chosen-folder or iCloud Drive storage available in Settings.
-
-**Key Characteristics:**
-
-- A forest rail anchors the paper work surfaces.
-- Compact sans-serif navigation surrounds spacious serif reading.
-- Soft green marks selection; terracotta marks actions and pins.
-- Storage and capture state stay explicit in everyday use.
+RAM remains the default, with optional encrypted local, custom-folder or iCloud Drive storage. The selector and bubble name the actual storage state. First launch requires capture opt-in; sample clips use an isolated session.
 
 ## Colors
 
-The palette pairs muted forest and warm neutrals with a single terracotta action accent. The frontmatter is the source of truth for color values.
-
-### Primary
-
-- **Terracotta** (`accent`): app tint, prominent actions, link text, pinned indicators and the picker's Return indicator.
-- **Forest** (`rail`): navigation rail, picker search header, storage symbolism and confirmation toast.
-
-### Secondary
-
-- **Specimen Gold** (`brand-gold`): the brand mark's backing, with a forest overlapping-squares symbol.
-- **Soft Leaf** (`selection`): selected history clips and picker rows. Selected text remains dark.
-
-### Neutral
-
-- **Warm Canvas** (`canvas`): main workspace and chronological history region.
-- **Reading Paper** (`paper`): unselected clips, detail preview, search, Settings, picker body and status strip.
-- **Dark Ink** (`ink`): primary text on light surfaces.
-- **Quiet Olive** (`secondary`): descriptions, source metadata, timestamps, hints and inactive pin symbols.
-- **Pale Sage** (`rail-secondary`): rail captions, secondary actions and picker close control.
-- **White** (`white`): primary rail and picker-header text, prominent-action labels and toast text.
-- **Paper Edge** (`divider`): structural separators and the search-field outline.
-- **Rail Selection** (`rail-selected`): translucent selected navigation background.
-- **Rail Card** (`rail-card`): translucent storage-card background.
-
-The picker's active pinned-only filter uses the native yellow color. Preserve that state distinction without introducing yellow elsewhere in the palette. The rail's collection separator uses Pale Sage at 20% opacity.
-
-**The Selection Rule.** Use Soft Leaf for selected content and translucent white for selected rail navigation; use Terracotta for actions and pin state.
+The frontmatter preserves exact sRGB values. Graphite background, surface and raised tones support soft white text and muted blue-grey metadata. Electric mint marks primary actions, selection, pins and text types; violet distinguishes image/file types and link artwork. Code uses violet keywords, mint strings, muted comments, warm amber numbers and cyan function names on soft white base text. All surfaces use the dark appearance.
 
 ## Typography
 
-**Interface Font:** the macOS system sans serif. **Reading Font:** the system serif. **Code Font:** the system monospaced face. The brand name uses the system rounded face. Use native SwiftUI font designs rather than bundling substitute families.
-
-The frontmatter records sizes in macOS points. Native line metrics remain intact; additional line spacing is applied only where stated below.
-
-| Role | Application |
-| --- | --- |
-| Display | Two-line welcome headline. |
-| Locked title | Centered privacy headline. |
-| Section title | Settings introduction and image/link detail titles. |
-| Preview | Ordinary copied text; add 10 points of line spacing and allow text selection. |
-| Page title | Main region title with compact tracking. |
-| Empty title | Unselected-detail prompt. |
-| Brand | Product name in the rail; the byline is an 11-point medium caption. |
-| Picker search | Plain text search on forest. |
-| Settings label | Semibold section labels with an SF Symbol. |
-| Body | Welcome description and link content. |
-| Code | Text containing both opening and closing braces; add 7 points of line spacing. |
-| Clip title | Semibold history titles; picker titles use the same size at medium weight. |
-| Label | Controls, search and detail-type labels; section labels may use medium weight. |
-| Caption | Descriptions, clip excerpts and source details. |
-| Metadata | Footer, keyboard hints, picker source/type and clip counts. |
-| Micro | Relative timestamps and history-row pin symbol. |
-
-Welcome supporting copy adds 6 points of line spacing; locked-state supporting copy adds 5. Settings explanations and offline-link notes add 4. The rail storage description and smallest storage warning add 3. Navigation text is 13 points, regular at rest and semibold when selected. Counts use monospaced digits.
-
-**The Reading Rule.** Reserve the large serif face for copied content and quiet introductions. Keep navigation, settings and metadata in the system sans serif.
+Use native system and rounded faces. Ordinary clipboard text uses the clip style with 5-point extra line spacing and a seven-line limit; link titles use the link style with a three-line limit. File names stop at two lines; plain file excerpts use 12-point system text and six lines. Code uses 11-point monospaced text with 3-point extra line spacing. Markdown uses rounded semibold headings at 17 points for level one and 14 for other levels, with 11-point body text. Locked headings use rounded 24-point medium text. Quick-action text is 13-point semibold; small captions are 11 points. Counts use monospaced digits.
 
 ## Layout
 
-All dimensions are macOS points. The main window defaults to 1180 × 760 and has a 980 × 620 minimum. It uses a hidden title bar and an explicitly light color scheme. It remains a desktop three-region workspace as the window resizes; there is no collapsing sidebar or mobile breakpoint.
+All dimensions are macOS points. The transparent, nonactivating selector is 560 high and at most 1120 wide, constrained to the pointer's screen width minus 40. It is horizontally centered; its lower edge sits 240 below the visible-screen midpoint. Search has a 700-point maximum width and 22-point top inset. The control strip has an 18-point bottom inset.
 
-| Region | Geometry and rhythm |
-| --- | --- |
-| Navigation rail | Fixed 210 wide. Brand inset: 22 horizontally, 48 above and 34 below. Navigation and collection rows sit within 12-point horizontal margins, with 4-point gaps. Collection heading: 24-point horizontal inset, 32 above and 10 below. The storage card stays near the bottom. |
-| Main header | 26-point horizontal inset, 38 above and 22 below; 16-point control gaps. Search stays 240 wide. A 1-point divider separates it from content. |
-| History | Fixed 330 wide, followed by a 1-point divider. Section heading inset: 22 horizontally, 20 above and 12 below. List row insets: 4 vertically and 10 horizontally. |
-| Detail | Flexible remaining width. Toolbar: 30-point horizontal inset, 22 above and 28 below. Scrolling content: 32 horizontally, 10 vertically and 24 between elements. Metadata/actions: 30-point inset, 14-point gaps, preceded by at least 24 points of space. |
-| Main footer | Fixed 36 high, 24-point horizontal inset and 7-point gaps. It spans the workspace beside the rail and names storage, retention and the picker shortcut. |
-| Settings | Scrollable paper surface; centered content frame has a 750-point maximum width and 32-point padding. Sections have 28-point gaps. Within a section, use 14-point gaps and a 24-point bottom inset before its divider. |
-| Welcome | Centered as a group, left-aligned internally, with 40-point outer padding and 22-point gaps. |
-| Locked | Centered content, 32-point outer padding and 18-point gaps. Optional iCloud passphrase field: 280 wide. |
-| Picker | Fixed 650 × 460. Search header: 20-point padding and 12-point gaps. Scroll content: 10-point padding and 4-point row gaps. Hint strip: 36 high, 20-point horizontal inset. |
+The default pinned-left/recent-right layout splits when matching pins and unpinned clips both exist outside the Pinned filter. Its pin area is 222 wide, followed by a 14-point gap and the recent fan, within 12-point horizontal insets. The pin stack shows the active pin and up to two others at 0.72 scale, with a count and Show all pins action. Orbit, pinned-only results and unsplit states use one fan. Each group is newest first; default selection starts at the newest unpinned match when available. Layout can be changed in quick or advanced settings.
 
-The rail and history keep their widths during resizing; detail absorbs the change. The upper rail scrolls as one region, keeping navigation and collections reachable above the fixed storage controls. Detail, history and Settings scroll independently. History titles and excerpts each stop at two lines. Picker titles and navigation names stop at one line. Do not imply a layout below the minimum window size.
+Each fan renders up to seven 278 × 300 card slots. Horizontal spread is `min(196, (availableWidth - 310) / 3.7)` per slot; resting vertical offset is 11 points per distance from centre. Cards use 18-point content insets. Search, type, collection and layout changes reset selection. Navigation wraps through all matches in the bounded history, with a configured maximum of up to 1000 entries; seven is a rendering limit, not a result cap.
+
+The transient menu-bar bubble is 340 wide, with 20-point padding and content-driven height. Advanced settings default to 680 × 720, with a 600 × 600 minimum, a scrollable 30-point page inset, 26-point section gaps and 14-point internal gaps. There is no sidebar or alternate mobile composition.
 
 ## Elevation & Depth
 
-The main workspace is flat. Paper, canvas, dividers and selection fills create depth without custom card shadows. The translucent storage card remains part of the rail. Native controls retain their platform rendering, focus treatment and disabled appearance.
-
-The floating picker uses the AppKit panel's native window shadow (`hasShadow = true`), with a transparent outer window and clipped paper content. Its level is floating; it can appear across Spaces and alongside full-screen applications. There is no custom shadow radius, offset or opacity token.
+Floating controls layer a 94%-opaque graphite surface over native ultra-thin material, with a 0.7-point white outline at 10% opacity. This dark substrate preserves contrast against desktop content. The transparent panel has no native window shadow; individual cards cast black shadows at 40% opacity, radius 22, offset 20 downward. Selected cards use a 1.2-point mint outline at 80% opacity; others use a 0.6-point white outline at 12%.
 
 ## Shapes
 
-Use the frontmatter's corner roles consistently: thumbnails, search/navigation controls, picker rows, history/storage cards, large image previews and the picker shell each have an established radius. Structural regions meet with straight edges and 1-point dividers.
-
-The brand mark is a rounded square whose corner radius is 26% of its size. The rail mark is 34 square; the welcome mark is 54 and the picker mark is 30. Its overlapping-squares symbol is 48% of the mark size at semibold weight. Confirmation toasts use a capsule. Native buttons and secure fields keep their platform shapes.
+Cards use continuous rounded corners. Search, filter and hint strips use their distinct corner tokens; short filters use capsules. Circular icon controls are 34 square. The mint brand symbol sits in a rounded square with a 9%-opacity mint backing, corner radius 30% of its size and symbol size 54%. Brand sizes are 34 in search, 36 in the bubble and 42 in advanced settings.
 
 ## Components
 
-### Buttons and menus
+**Selector motion.** Opening spreads fan cards from compact 18-point slot offsets and a 130-point downward offset. Cards spring with response 0.58, damping 0.76 and a 25 ms stagger per slot distance. Resting cards rotate 3.2° per slot, yaw −8° per slot and scale down by 0.055 per slot distance to a minimum of 0.82. Pointer movement adds up to 3° tilt on each axis. Selection uses a spring with response 0.46 and damping 0.82; search enters with response 0.4 and damping 0.8. The pin area enters from 100 points left with response 0.5 and damping 0.82; stacked pins rotate −5° and offset 7 points right/9 down per layer.
 
-Prominent actions use the native bordered-prominent style with Terracotta tint and large control size for Start Capturing, Open History and Copy. Capture status uses a regular bordered control. Navigation, pins, picker close and rail actions use plain buttons. Secondary text links use the native link style. Ellipsis and collection controls use native borderless menus.
+Choosing a fan card flings it 160 points upward while other fan cards drop 95 and spread outward. The departure uses 180 ms ease-in, fading and blurring to 9 points; the chosen card scales to 1.06 and others to 0.68. The controller waits 180 ms before hiding on choice or ordinary dismissal, then copies or pastes when applicable; loss of key status hides immediately. Reduce Motion removes phase/selection animations, tilt, rotation, blur and animated scaling, keeps the static fan positions and compact pin-stack scale, and skips the departure wait.
 
-Hover, keyboard focus, pressed and disabled rendering follow native controls; there are no custom scale, hover-shadow or focus-ring effects. Every icon-only action has an accessible name. Capture and storage actions are disabled during the relevant locked, demonstration or authentication states. Destructive history clearing requires a native confirmation alert.
+**Interaction.** Command-Shift-V opens the selector. Arrow keys, mouse wheel and trackpad scrolling navigate. Scroll handling is local to the open selector, follows the dominant axis and ignores momentum; precise scrolling accumulates 28 points per step, with a 90 ms minimum between steps. Return and card activation paste when enabled; Option-Return copies only. Command-P, card pins and filters keep the selector open. Escape dismisses. Direct paste requires Accessibility permission; otherwise feedback and its permission action appear in the menu-bar bubble. Context menus provide copy, paste, pin, collection and delete. Icon actions have accessible names; selected cards expose a summary and selected state.
 
-### Search
+**Previews.** Real image representations take precedence over accompanying URLs. Image thumbnails stay in memory and crop to a 174-point preview. Files use a 126-point image or first-page PDF preview, a text preview, or a native 70 × 84 type icon with name and size. Eligible text files up to 512 KB decode at most 8000 bytes, then choose Markdown, code or plain text by format; filenames participate in search. Links show a title and host without fetching pages.
 
-Main search combines a magnifying-glass symbol, plain text field and Command-F hint on paper, with a 1-point Paper Edge outline. Its 10-point padding and control radius come from the tokens. Command-F focuses the field. Search and scope changes select the first available matching clip when the previous selection no longer qualifies.
+Markdown and code previews use local SwiftUI text and AttributedString formatting. Markdown parsing is bounded to 8000 characters and 120 input lines; cards show at most six blocks, with headings, inline emphasis, lists, quotes, rules and fenced code. Text-card Markdown clips at 190 points. Links are inert and images are never fetched. Code highlighting is bounded to 8000 characters, with ten lines in text cards, seven in files and five inside Markdown fences. Fenced code has 8-point padding, code-block corners and an 18%-black backing.
 
-Picker search is larger and sits directly on forest with white text and caret. It gains focus as the panel appears. It displays up to the first 50 matching clips, with a query independent of main-window search.
-
-### Navigation and storage card
-
-Navigation rows use 10-point icon/text gaps, 20-point icon columns, 12-point horizontal padding and 10-point vertical padding. Selection adds the translucent rail fill and selected accessibility trait. Collections share the row pattern.
-
-The bottom storage card opens the actual storage controls. It uses 14-point padding, a 19-point memory or shield symbol, a 13-point semibold heading and an 11-point description. Wording reflects RAM or encrypted storage. The footer repeats active storage and retention, or explicitly says history is locked.
-
-**The Visible Boundary Rule.** Keep the storage card and footer truthful as storage, lock, capture and demonstration states change.
-
-### History clips and detail
-
-Clips use paper at rest and Soft Leaf when selected, with the clip-row radius and row inset. Their 10-point vertical rhythm separates source/time metadata, title and a two-line excerpt. Images use a cropped 42-point-high thumbnail. Double-click copies; the context menu offers Copy, Pin, collection assignment and Delete.
-
-Detail uses paper and large selectable content. Images scale to fit. Links show an offline explanation and selectable URL; they do not fetch remote previews. Plain text uses the reading serif; text with both opening and closing braces uses the code style. Pin and overflow controls stay above the preview; source, size, collection and Copy stay below.
-
-### Settings
-
-Settings uses labeled sections separated by fine rules. Pickers, toggles, secure fields and buttons remain native. Storage choices expose RAM, an encrypted vault on this Mac, an encrypted vault in a chosen folder and passphrase-encrypted iCloud Drive sync. Explanatory and disabled states follow the selected storage mode. The current storage label remains visible until an applied change succeeds.
-
-### Empty, locked and confirmation states
-
-- **First use or empty history:** welcome mark, serif headline, explicit Start Capturing action and Privacy & storage. Capture requires opt-in. Once enabled, the primary action reads Waiting for your next copy and is disabled.
-- **No filter matches:** native search-unavailable view in history. Detail shows its selection prompt when no eligible clip is selected.
-- **Locked:** replace history and detail with the centered privacy state and Open History. RAM history explains it was cleared; encrypted storage explains authentication. iCloud adds a secure passphrase field. Authentication updates and disables the action.
-- **Demonstration:** capture is disabled; the capture control reads Demo and the footer says Sample content · capture disabled.
-- **Confirmation:** forest capsule toast, white 12-point medium text, 18-point horizontal and 12-point vertical padding, 52 points above the workspace bottom. It does not intercept input. Errors use native alerts without exposing clip payloads.
-
-### Picker
-
-Command-Shift-V opens the nonactivating floating picker. It starts 12 points below its destination at zero opacity, then moves and fades into place over **200 ms with ease-out timing**. Reduce Motion sets the initial offset to zero, initial opacity to one and duration to zero. Dismissal immediately orders the panel out; there is no closing animation or list transition.
-
-The destination is centered horizontally on the pointer's screen, with its lower edge 170 points below that screen's visible-frame midpoint. The panel is movable by its background. Its paper shell has the panel radius and forest header.
-
-Rows use 14-point horizontal and 13-point vertical padding, 12-point gaps, a 26-point kind-symbol column and the picker-row radius. Selection adds Soft Leaf and a terracotta Return indicator. Hover changes selection; arrow keys wrap through matches and scroll the chosen row into view. Search and pinned-filter changes reset to the first result. Each row has a separate accessible pin action.
-
-Return copies the selected clip and closes the picker. Escape, close, a second shortcut invocation or loss of key status dismisses it. Explicit dismissal reactivates the previous app when appropriate. The footer continuously shows select, copy and close hints. A shortcut invoked while locked opens the main history window; the picker also has a locked fallback. Empty and no-match results use native unavailable states. Locking with the picker open dismisses it.
+**States.** Empty and no-match results replace cards with a frosted message and capture opt-in when applicable. Locked history replaces previews with authentication and, for iCloud, a secure passphrase field. The bubble shows capture/lock state, clip count, storage, native mini switches and conditional permission guidance. Advanced settings use native fields, pickers and alerts within graphite sections. Errors and feedback omit clipboard payloads.
 
 ## Do's and Don'ts
 
-### Do:
-
-- **Do** use the native font designs, controls and focus behaviour already established in the app.
-- **Do** keep the 210-point rail and 330-point history fixed while the reading region grows.
-- **Do** use serif text for reading and system sans serif for navigation, settings and metadata.
-- **Do** show real storage, capture, lock and demonstration state in visible controls.
-- **Do** keep Command-Shift-V, arrow selection, Return copying and Escape dismissal discoverable.
-- **Do** preserve the picker's zero-duration, zero-offset Reduce Motion path.
-
-### Don't:
-
-- **Don't** replace native controls with decorative web-style substitutes or add unimplemented responsive breakpoints.
-- **Don't** turn every surface into a shadowed card; use paper tones and fine dividers.
-- **Don't** use action color as a replacement for the selected-content fill.
-- **Don't** put sensitive clip payloads in errors or diagnostic presentation.
-- **Don't** imply persistence is the default or that pinning bypasses retention.
-- **Don't** add animation to locked content or copy-result lists without an explicit behaviour change.
+- **Do** keep the selector transparent around its independently surfaced controls and cards.
+- **Do** preserve readable search, keyboard focus and explicit copy-only access.
+- **Do** keep storage, capture, permission and sample states truthful.
+- **Don't** introduce a persistent main/history window, rail or document workspace.
+- **Don't** apply flight, tilt or scaling when Reduce Motion is enabled.
+- **Don't** replace real image/file previews with accompanying URL text or expose private content in diagnostics.

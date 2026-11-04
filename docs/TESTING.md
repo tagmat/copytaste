@@ -1,33 +1,24 @@
 # Testing
 
-Run `./scripts/test.sh` on a logged-in Mac with Xcode 16 or later. The package has no network dependencies. The scripts keep compiler module caches inside `.build`.
+Run `./scripts/test.sh` on a logged-in Mac with Xcode 16 or later. Compiler caches stay inside `.build`. Tests use synthetic text, generated images/PDFs, isolated temporary files and uniquely named pasteboards. They never use the general clipboard, Keychain or a real iCloud account. Direct-paste tests inject activation and event delivery; they never send real input.
 
-Pure unit tests verify private-marker handling, protected bundle families, untrusted source hints, exclusions, transition races, secret fixtures, limits, classification, search, deduplication and retention of pins. Encryption tests cover authenticated round trips, ciphertext opacity, nonce freshness, tampering, wrong keys, format versions, symbolic links and filesystem permissions. They operate in unique temporary directories and remove them after each test.
+Coverage includes source/private-marker rejection, content filters, mixed image-and-URL priority, disabled-image skip, file names/contents and symlink rejection, retention, deduplication, filename search, private transfer permissions and cleanup, PDF thumbnails, circular selector slots, recent clips after 100 pins, Markdown blocks, bounded Unicode-safe tokenisation, settings migration, unknown layout fallback and opt-out persistence, destination changes, secure input, missing permission and cancellation during activation. Encryption/sync tests cover authenticated round trips, tampering, nonces, file modes, independent salts, offline deletions, clear boundaries, collection limits and recovery.
 
-App integration tests use uniquely named pasteboards and synthetic clips. They verify copying with private markers, preserving newer clipboard changes, clearing owned values on shutdown and real collection/pin/search operations. **They never use the general pasteboard or Keychain.** A sandbox that denies the pasteboard service cannot run these integration tests; grant the test process access to the logged-in GUI session rather than interpreting nil clipboard values as an app failure.
+A shell sandbox denying macOS pasteboard services cannot run native pasteboard tests; nil values in that environment do not establish an app failure. Use the logged-in GUI service context with isolated named boards.
 
 ## Manual release checks
 
-Use a dedicated test account or only synthetic content. Do not copy real credentials for testing.
+Use synthetic data and a dedicated account for permission tests.
 
-- Start the packaged app with no saved preferences. Verify memory mode and capture off. Enable capture and copy harmless text from a standard text editor. Search, pin, move and copy the entry.
-- Verify the pre-existing clipboard is not imported on start or resume.
-- Copy from an explicitly excluded app. No entry should appear. Adding an exclusion should remove earlier entries attributed to that app.
-- Select encrypted local storage and complete the OS authentication sheet. Relaunch; no history is shown until authentication. Cancel authentication and verify the view remains locked.
-- Select a temporary custom folder. Verify an encrypted file is created, the old active file is removed and an unrelated existing vault is never overwritten. Switch to memory and verify the active file is removed.
-- Enable pinned-only persistence. After relaunch, only saved pins should return. Check expiry still applies to pins.
-- With a disposable vault, deny write access. Capture must pause, surface an error and leave the previous vault intact. Do not modify production Keychain items for this test.
-- Copy from the app, then replace the clipboard. Auto-clear and quit must preserve the newer value.
-- Lock the Mac, sleep it and change login sessions. History should unload. Memory history is gone; saved history needs authentication to return.
-- Verify ⇧⌘V, ⌘F, ⌘Return, ⇧⌘P, ⇧⌘L, VoiceOver labels, list keyboard navigation and a resized window.
-- Enable the login item only in the test account. Verify it appears in macOS Login Items, then disable it.
+- Launch with fresh preferences: only the menu-bar interface should appear; capture is off and storage is memory. The gear should be the deliberate path to an advanced settings window.
+- Copy an image offering both bitmap data and URL text. It must appear as Image and copy back as PNG. Disable images and verify the whole mixed item is skipped.
+- Copy a PDF, text document and archive individually. Check PDF/image thumbnails, text excerpts and native icons. Search by filename. Folders, symlinks, credential/key files and oversized files must be skipped.
+- Grant Accessibility through the explicit quick-settings action. From a disposable text document, open the selector with ⇧⌘V, choose a harmless clip and verify it is pasted automatically. Test image/file destinations that accept those paste types. Denied permission, secure input or changing apps must preserve copy-only fallback without pasting elsewhere.
+- Test arrow and wheel/trackpad navigation, Return, Option-Return, Command-P, pin/type/collection filters, hover movement, VoiceOver labels and Reduce Motion. Switch between Pinned + recent and Single orbit. With 100 pins, a new unpinned clip must remain reachable. Demo must never activate another process or post paste input.
+- Preview Markdown headings/lists/fenced code and source files containing comments, strings and Unicode. Ensure previews do not activate links, fetch images or execute code.
+- Select a file, then Clear History or lock. Verify the owned temporary transfer is removed and newer clipboard values are preserved.
+- Exercise encrypted local/custom-folder storage, cancelled authentication, missing Keychain, failed writes, retention and screen/session/sleep locking with disposable vaults.
+- Use two Macs with a test iCloud account for real delivery, offline changes, placeholder downloads, conflict versions and deletion propagation. Update all peers before syncing file entries.
+- Test login-item approval, Developer ID signing, notarisation and Intel execution separately.
 
-Authentication, Keychain prompts, OS lock events, login-item approval and notarisation need actual OS interaction. Unit tests do not certify those integrations. The CI workflow builds both Mac architectures; Intel execution still needs an Intel test machine.
-
-## iCloud and picker checks
-
-The encrypted sync tests use a shared temporary file, not a live iCloud account. They cover two-client merging, pin state, collection membership, offline deletions, clear-history boundaries, re-copy after deletion, sensitive peer data, incorrect passphrases, unchanged-write suppression and collection-limit overflow.
-
-For a real release, use two Macs with a test iCloud account and a unique sync phrase. Verify offline edits, delivery delay, evicted files, concurrent conflicts, deletion propagation, incorrect phrases and disconnecting without removing shared history. Check that no real credentials enter the test workflow. Live iCloud delivery is not certified by the local suite.
-
-Open the sample window, invoke ⇧⌘V, search with synthetic content, navigate with arrows and Return, and verify copying stays on the sample pasteboard. With both primary and sample windows open, history commands must act on the focused model. Repeat with Reduce Motion enabled.
+These platform permission, delivery and accessibility checks are not certified by injected unit tests. See [validation](VALIDATION.md) for checks actually completed.

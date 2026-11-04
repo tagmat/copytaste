@@ -1,23 +1,21 @@
 # Validation — 4 November 2026
 
-Local validation used macOS 26.3.1, Xcode 26.5 and Swift 6.3.2 on Apple Silicon.
+CopyTaste 0.2 was validated locally using macOS 26.3.1, Xcode 26.5 and Swift 6.3.2 on Apple Silicon.
 
-## Automated checks
+## Automated
 
-- 48 unit and native integration tests passed with synthetic data.
-- Release builds succeeded for arm64 and x86_64; the distribution binary contains both slices.
-- The clean ZIP was extracted into a temporary directory and its ad-hoc signature verified with `codesign --verify --deep --strict`.
-- Bundle metadata passed `plutil`; shell scripts passed `bash -n`; staged changes passed `git diff --check`.
-- Temporary test vaults and packaging/verification directories were removed. Native macOS checks required no Docker resources.
+76 tests passed with synthetic content and isolated native pasteboards/temporary files. New regressions cover mixed image/URL representations, files and symlinks, file transfer cleanup, filename search, in-memory PDF previews, selector slots, a recent clip after 100 pins, Markdown blocks, bounded Unicode-safe syntax tokens, preference migration, unknown layout fallback and destination-safe direct-paste decisions. Real keystroke injection is replaced by a test sink.
 
-## Interface checks
+Release builds succeeded for arm64 and x86_64. The clean distribution ZIP is built and ad-hoc signed in a temporary staging directory outside folder-sync metadata. Bundle metadata and shell syntax checks passed. Test vaults, transfer fixtures and build staging directories were cleaned. No Docker resources were needed.
 
-The packaged app launched with memory storage selected and capture off. First-launch and locked views were inspected. Sample history was isolated from real storage and the general pasteboard. Search, pin filtering, accessible row selection, detail previews, the minimum-size scrolling sidebar and the iCloud setup view were inspected.
+## Local interface review
 
-Command-Shift-V opened the picker. With synthetic sample clips, search followed by Down and Return copied to the isolated sample pasteboard and dismissed the panel. The floating panel's light search prompt and default first-item highlight were visually checked. The completed local/demo interface review had no remaining required fixes in its scoped final pass.
+A separately identified preview app used synthetic clips and an isolated pasteboard, with global-hot-key registration disabled. It did not restart or clear the user's live CopyTaste memory session. The selector, menu-bar settings bubble, image/PDF/text previews and file filter were inspected. The final visual pass confirmed readable dark control capsules, opaque spatial cards, mint selection, real PDF thumbnails and text-file excerpts. All source findings from the bounded review were corrected: clearing outgoing transfers/cache, filename search and distinguishable VoiceOver card labels.
 
-## Remaining release validation
+The subsequent Markdown/code and split-layout additions passed source review and the automated regressions above. A locked Mac prevented refreshing their final interactive captures; wheel/trackpad behaviour and final colour/layout rendering still need an unlocked-session check. README media illustrates the previously captured single-orbit, file and bubble surfaces with synthetic samples. PNG exports were checked for text/EXIF/time chunks; the GIF is assembled from new pixel frames without source metadata.
 
-Live iCloud network delivery and conflict versions need a two-Mac account test. Portable encryption, independent initialisation salts, deletion merging and recovery were tested with local temporary files. OS authentication, real Keychain access, sleep/lock notifications, Login Items, Intel execution and comprehensive VoiceOver/Full Keyboard Access were not end-to-end certified. Source and tests cover their supporting logic but do not replace platform interaction.
+## Not certified
 
-The build is locally ad-hoc signed. Developer ID signing, notarisation and public hosting have not been performed. See [distribution](DISTRIBUTION.md) and [security](../SECURITY.md) before publishing a release.
+Real Accessibility approval and cross-app acceptance of posted paste events require manual OS testing. Input-sink tests verify targeting and cancellation logic, not destination acknowledgement. Multi-Mac iCloud transport, actual conflict/placeholder behaviour, real Keychain prompts, OS lock/sleep signals, comprehensive VoiceOver/Full Keyboard Access, login-item approval and Intel execution still need release testing.
+
+Developer ID signing, notarisation and public hosting have not been performed. See [distribution](DISTRIBUTION.md) and [security](../SECURITY.md).

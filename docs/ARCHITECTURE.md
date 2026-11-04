@@ -1,36 +1,35 @@
 # Architecture
 
-CopyTaste is a Swift 6 package with no external dependencies. `CopyTasteCore` contains value types, capture policy, bounded history operations and encrypted file I/O. The executable contains the SwiftUI interface and AppKit, Carbon, Security, LocalAuthentication and ServiceManagement adapters.
+CopyTaste is a Swift 6 package with no external dependencies. `CopyTasteCore` owns the value types, privacy policy, bounded history, encrypted local file I/O and encrypted sync state. The executable provides native macOS adapters and the interface.
 
-## Data path
+## Capture
 
-1. `ClipboardMonitor` observes the change count every 400 ms, only after opt-in and while unlocked.
-2. The metadata gate runs before payload access, rejecting private markers, excluded apps, secure input, source transitions, files and multiple items.
-3. Text is checked for size and known sensitive shapes. Optional images are bounded and decoded locally. A final state check discards raced reads.
-4. `AppModel` deduplicates by a SHA-256 content fingerprint and applies age, count and byte limits.
-5. In memory mode, the resulting snapshot replaces process state. No file or key adapter is called.
-6. With persistence enabled, the selected subset is encrypted and atomically saved before replacing visible state. Failure pauses capture. Persisted-only pins do not change the in-memory search experience.
+`ClipboardMonitor` polls the change count every 400 ms only while enabled and unlocked. Starting/resuming skips the existing clipboard. Source application, all advertised private markers, secure input and transition timing are checked before payload access. Changed source or clipboard state after reading discards the result.
 
-## Persistence
+A single regular file URL is handled through size, symlink, credential-name and text-content filters. Otherwise image bytes take priority over an accompanying URL/string. Supported bitmaps are dimension-checked before decoding and normalised to PNG. Plain strings and URL-only representations are classified last. The app never downloads an image merely because its URL was copied.
 
-`VaultSnapshot` version 1 contains entries and collections. All content and content metadata are encrypted together. The local path is `~/Library/Application Support/net.tagmat.copytaste/history.vault`; custom storage uses `<chosen folder>/CopyTaste/history.vault`. UserDefaults holds only preferences, including storage selection, retention and bundle exclusions.
+Entries deduplicate by content fingerprint, including file bytes and filename, then obey age/count/byte limits. Search includes filenames. `Preferences` uses compatible decoding with explicit 0.2 image-default migration; subsequent opt-outs persist.
 
-`KeyStore` creates a non-synchronising 32-byte Keychain item only when optional persistence is selected. It never recreates a missing key for an existing vault. `EncryptedVault` does not know how to create keys or authenticate; those duties belong to the application adapter. LocalAuthentication protects opening saved history at the application layer.
+## Presentation
 
-`AppModel` is main-actor isolated. The change-count protocol and conditional auto-clear prevent stale clipboard operations from overwriting a newer copy. Storage work is synchronous and bounded; a large encrypted snapshot may briefly delay the interface. Moving file I/O to a serial actor is a future performance improvement, not a reason to make capture bypass a failed write.
+`CopyTasteApp` has a Settings scene, with no launch-time document window. `AppDelegate` owns the model, menu-bar item, transient NSPopover, global hot key, picker and advanced-settings window controller. The app runs with accessory activation policy and LSUIElement metadata.
 
-## Locking and lifecycle
+The selector is a transparent, nonactivating NSPanel. SwiftUI positions up to seven real clipboard cards around the selected index using circular slots, perspective, spring motion, staggered entry and exit flight. The default layout places a small pinned stack on the left and chronological recent cards on the right; a presentation preference selects a combined chronological orbit instead. Matching entries retain the full bounded history, so pins cannot displace recent results through a separate display cap. Search/filter/hint surfaces combine native material with a dark substrate. Keyboard focus, arrow navigation, copy-only, pinning, filters and collection assignment operate on the same retained history. A local scroll monitor accepts wheel/trackpad events only from the open picker window, ignores momentum and advances selection. Reduce Motion suppresses spatial animation. Preview mode has a separate app identity, isolated pasteboard and no hot-key registration, allowing development without restarting a live memory session.
 
-Screen/session/sleep notifications stop the monitor, clear owned clipboard output and release the in-memory snapshot and key. Saved vaults remain encrypted. Memory sessions cannot be reconstructed after lock. Relaunch starts saved storage locked; authentication precedes loading. A lock-generation counter prevents authentication completing across a later lock from reopening the history.
+`PreviewCache` bounds in-memory bitmap and PDF thumbnails. PDFDocument stays alive while PDFPage renders. Generic files use system type icons. No preview file is written merely to render the selector.
 
-The global shortcut uses a registered Carbon hot key instead of a global keystroke monitor. Copying does not simulate events. The menu-bar item restores the main window after closing. Login-item registration is explicit and uses the packaged application's `SMAppService`.
+`PreviewFormatting` bounds Markdown parsing and syntax tokenisation to 8,000 characters. Markdown blocks render as native SwiftUI text; inline links are removed and images are never fetched. Code token UTF-16 ranges are converted to SwiftUI AttributedString ranges for colouring. Known file extensions take precedence over text heuristics. These inert previews do not execute code or embed a browser.
 
-## Interface
+## Delivery
 
-The navigation rail scopes history; the chronological list selects an entry; the detail pane previews and copies it. Settings replaces the work area without creating a separate modal workflow. Every image or link preview is local. The demo is a separate in-memory session with an isolated named pasteboard and labelled synthetic content.
+`PasteService` receives an immutable destination PID and injected OS operations. It copies first, then checks permission, secure input, destination activation and a generation token, waits for focus, rechecks, and posts Command-V to that PID. Copy-only and demo modes never post input. The selector's generation counter cancels delayed work when dismissed/reopened or locked. Delivery lacks acknowledgement that an app accepted a given format.
 
-## Quick picker and encrypted sync
+File paste materialises a unique mode-0700 directory and mode-0600 file through `TransferFileStore`. Its URL is written with private/origin markers. It expires after five minutes, or sooner on Clear History, lock or quit. This on-demand transfer is separate from in-memory history. Other clipboard output is conditionally cleared only if its change count still matches.
 
-A nonactivating floating NSPanel opens on ⇧⌘V with a short position/opacity animation, respecting Reduce Motion. It focuses its search field, supports arrow navigation, pins and Return-to-copy, then restores the previous application. Demo and primary pickers hold separate models and pasteboards; menu commands resolve the key window at action time. Standard ⌘V remains available for the destination app.
+## Persistence and lifecycle
 
-`CloudVault` uses iCloud Drive's already-enabled CloudDocs folder. A portable key is derived from a user-entered phrase through system CommonCrypto PBKDF2-SHA256, and the state is sealed with CryptoKit AES-GCM. The phrase is not saved. A six-second timer and writes exchange state through NSFileCoordinator, merging NSFileVersion conflicts. Deletion fingerprints, a clear boundary and modification timestamps support offline convergence. Bounded collection and deletion logs are checked before replacing the file. Unchanged state does not trigger another encrypted write. Local Keychain vaults remain a separate storage choice.
+Memory mode never invokes a history file or key adapter. Local vaults encrypt the complete snapshot with AES-256-GCM before atomic writes; their non-synchronising key uses Security.framework. LocalAuthentication gates reopening saved history.
+
+Optional iCloud Drive sync uses a separate passphrase-derived portable key, coordinated file access, version-conflict merging, modification timestamps, deletion fingerprints and a clear boundary. The original phrase material is held only while unlocked to derive keys for independently initialised salts. File entries require 0.2-capable peers. The cloud path is the user's already-enabled iCloud Drive directory, not a custom server.
+
+Lock/session/sleep signals stop capture, clear owned clipboard output and temporary transfers, purge preview caches and release history/key references. Saved vaults remain encrypted. UserDefaults stores preferences only. Authentication and generation checks prevent delayed work reopening or pasting after a later lock. See [security](../SECURITY.md) for limits and [testing](TESTING.md) for evidence.
