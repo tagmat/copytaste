@@ -100,6 +100,13 @@ final class CloudSyncTests: XCTestCase {
         }
     }
 
+    func testReopeningMissingVaultNeverInitializesAnEmptyHistory() throws {
+        try withURL { url in
+            XCTAssertThrowsError(try CloudVault.connect(url: url, passphrase: phrase, createIfMissing: false))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        }
+    }
+
     func testCollectionOverflowNeverWritesAnUnreadableVault() throws {
         try withURL { url in
             let vault = try CloudVault.connect(url: url, passphrase: phrase)

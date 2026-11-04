@@ -1,12 +1,16 @@
 import SwiftUI
 import AppKit
 import Carbon
+import CopyTasteCore
 
 @main
 struct CopyTasteApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
-        Settings { SettingsView(model: delegate.model, onShowPicker: { delegate.showPicker() }) }
+        Settings {
+            SettingsView(model: delegate.model, onShowPicker: { delegate.showPicker() },
+                onShortcutChange: { delegate.changeSelectorShortcut($0) })
+        }
             .commands {
                 CommandGroup(replacing: .appSettings) {
                     Button("Advanced Settings…") { delegate.showAdvancedSettings() }.keyboardShortcut(",")
@@ -48,15 +52,41 @@ struct CopyTasteApp: App {
             MainActor.assumeIsolated { Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue().showPicker() }
             return noErr
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-        let isPreview = Bundle.main.object(forInfoDictionaryKey: "CopyTastePreviewMode") as? Bool == true
-        let result = isPreview ? noErr : RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(cmdKey | shiftKey), EventHotKeyID(signature: 0x43545950, id: 1),
-            GetApplicationEventTarget(), 0, &hotKey)
-        if result != noErr { model.errorMessage = "The ⇧⌘V shortcut is already in use. Open the selector from the menu bar." }
+        _ = registerSelectorShortcut(model.preferences.selectorShortcut)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self else { return }
             if self.model.isDemo { self.showPicker() }
             else if !self.model.preferences.captureEnabled { self.showPopover() }
         }
+    }
+
+    func changeSelectorShortcut(_ shortcut: SelectorShortcut) {
+        guard shortcut != model.preferences.selectorShortcut, registerSelectorShortcut(shortcut) else { return }
+        model.setSelectorShortcut(shortcut)
+    }
+
+    private func registerSelectorShortcut(_ shortcut: SelectorShortcut) -> Bool {
+        if model.isDemo { return true }
+        let modifiers: Int
+        switch shortcut {
+        case .shiftCommand: modifiers = cmdKey | shiftKey
+        case .optionCommand: modifiers = cmdKey | optionKey
+        case .controlOption: modifiers = controlKey | optionKey
+        case .disabled:
+            if let hotKey { UnregisterEventHotKey(hotKey) }
+            hotKey = nil
+            return true
+        }
+        var registration: EventHotKeyRef?
+        let result = RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(modifiers), EventHotKeyID(signature: 0x43545950, id: 1),
+            GetApplicationEventTarget(), 0, &registration)
+        guard result == noErr, let registration else {
+            model.errorMessage = "The \(shortcut.label) shortcut could not be registered. Choose another in advanced settings or use the menu bar."
+            return false
+        }
+        if let hotKey { UnregisterEventHotKey(hotKey) }
+        hotKey = registration
+        return true
     }
 
     private func rememberDestination() {
@@ -114,7 +144,9 @@ struct CopyTasteApp: App {
             window.title = "CopyTaste · Advanced Settings"
             window.minSize = NSSize(width: 600, height: 600)
             window.appearance = NSAppearance(named: .darkAqua)
-            window.contentView = NSHostingView(rootView: SettingsView(model: model, onShowPicker: { [weak self] in self?.showPicker() }))
+            window.contentView = NSHostingView(rootView: SettingsView(model: model,
+                onShowPicker: { [weak self] in self?.showPicker() },
+                onShortcutChange: { [weak self] in self?.changeSelectorShortcut($0) }))
             window.center()
             settingsController = NSWindowController(window: window)
         }

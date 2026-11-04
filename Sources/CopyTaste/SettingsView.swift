@@ -5,6 +5,7 @@ import CopyTasteCore
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     var onShowPicker: () -> Void = {}
+    var onShortcutChange: @MainActor @Sendable (SelectorShortcut) -> Void = { _ in }
     @State private var storage = StorageMode.memory
     @State private var pinnedOnly = false
     @State private var syncPassphrase = ""
@@ -39,10 +40,19 @@ struct SettingsView: View {
                         SecureField("Sync passphrase · 16+ characters", text: $syncPassphrase).textFieldStyle(.roundedBorder)
                         Text("Use the same phrase on every Mac. It is never saved and cannot be recovered. Leaving sync keeps the shared encrypted file in iCloud.")
                             .font(.system(size: 11)).foregroundStyle(Palette.secondary)
-                        if let date = model.lastSyncAt {
+                        if model.preferences.storageMode == .iCloud && !model.isLocked {
                             HStack {
-                                Text("Last local merge: \(date.formatted(date: .omitted, time: .shortened))").foregroundStyle(Palette.secondary)
+                                if let date = model.lastSyncAt {
+                                    Text("Last local merge: \(date.formatted(date: .omitted, time: .shortened))").foregroundStyle(Palette.secondary)
+                                }
                                 Spacer(); Button("Sync Now") { model.syncNow(userInitiated: true) }
+                            }
+                            if let issue = model.syncIssue {
+                                Text("Sync will retry. \(issue)").font(.system(size: 11)).foregroundStyle(Palette.violet)
+                            }
+                            if model.hasPendingSync {
+                                Text("Changes are waiting in memory. They will be lost if you lock or quit before the vault is available.")
+                                    .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                             }
                         }
                     } else if storage != .memory {
@@ -68,10 +78,16 @@ struct SettingsView: View {
                     Picker("Clear copied output after", selection: Binding(get: { model.preferences.clearClipboardAfterSeconds }, set: { model.updatePreferences(clearAfter: $0) })) {
                         Text("15 seconds").tag(15); Text("45 seconds").tag(45); Text("2 minutes").tag(120); Text("Never").tag(0)
                     }
-                    Text("A 24 MB history budget also applies. Auto-clear preserves newer copies. Pins expire too.").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                    Toggle("Keep pins past expiry", isOn: Binding(get: { model.preferences.keepPinsPastExpiry }, set: { model.setKeepPinsPastExpiry($0) }))
+                        .disabled(model.isLocked)
+                    Text("Pins count toward the history limits. With iCloud, use the same retention settings on all Macs.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                 }
                 section("Privacy & capture", symbol: "shield.lefthalf.filled") {
                     Toggle("Capture images", isOn: Binding(get: { model.preferences.captureImages }, set: { model.setCaptureImages($0) }))
+                    Toggle("Search text in images", isOn: Binding(get: { model.preferences.imageTextSearch }, set: { model.setImageTextSearch($0) }))
+                    Text("Reads text on this Mac from up to 60 recent images while the selector is open. The search index lives only in the selector.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                     Toggle("Capture files", isOn: Binding(get: { model.preferences.captureFiles }, set: { model.setCaptureFiles($0) }))
                     Toggle("Paste on selection", isOn: Binding(get: { model.preferences.autoPaste }, set: { model.setAutoPaste($0) }))
                     PermissionStatusView(isDemo: model.isDemo)
@@ -101,6 +117,10 @@ struct SettingsView: View {
                     }
                 }
                 section("On your Mac", symbol: "desktopcomputer") {
+                    Picker("Selector shortcut", selection: Binding(get: { model.preferences.selectorShortcut },
+                        set: { shortcut in onShortcutChange(shortcut) })) {
+                        ForEach(SelectorShortcut.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
                     Picker("Selector layout", selection: Binding(get: { model.preferences.selectorLayout }, set: { model.setSelectorLayout($0) })) {
                         Text("Pinned left · recent right").tag(SelectorLayout.pinnedAndRecent)
                         Text("Single orbit").tag(SelectorLayout.orbit)
@@ -110,9 +130,9 @@ struct SettingsView: View {
                             do { if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
                             catch { model.errorMessage = "Move CopyTaste to Applications and try the login setting again. \(error.localizedDescription)"; loginEnabled = SMAppService.mainApp.status == .enabled }
                         }
-                    Text("⇧⌘V opens the selector · Return pastes · Option-Return copies · Command-P pins")
+                    Text("Return pastes · Option-Return copies · ⌘1–9 quick paste · ⌘E edits · ⌘B adds to batch")
                         .foregroundStyle(Palette.secondary)
-                    Text("CopyTaste 0.2.0 · by tagmat · MIT License").font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                    Text("CopyTaste 0.3.0 · by tagmat · MIT License").font(.system(size: 10)).foregroundStyle(Palette.secondary)
                 }
             }.padding(30)
         }.background(Palette.background).foregroundStyle(Palette.text).tint(Palette.mint).preferredColorScheme(.dark)

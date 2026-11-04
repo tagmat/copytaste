@@ -27,7 +27,11 @@ struct QuickSettingsView: View {
                 Text("\(model.snapshot.entries.count) clips").monospacedDigit()
             }.font(.system(size: 11)).foregroundStyle(Palette.secondary)
             Button(action: onPicker) {
-                HStack { Text(model.isLocked ? "Unlock your orbit" : "Open your orbit"); Spacer(); Text("⇧⌘V").opacity(0.65) }
+                HStack {
+                    Text(model.isLocked ? "Unlock your orbit" : "Open your orbit")
+                    Spacer()
+                    if model.preferences.selectorShortcut != .disabled { Text(model.preferences.selectorShortcut.label).opacity(0.65) }
+                }
                     .font(.system(size: 13, weight: .semibold)).padding(14).foregroundStyle(Palette.background)
                     .background(Palette.mint, in: RoundedRectangle(cornerRadius: 13))
             }.buttonStyle(.plain)
@@ -57,7 +61,8 @@ struct QuickSettingsView: View {
                     Image(systemName: model.preferences.storageMode == .memory ? "memorychip" : "lock.icloud")
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.storageLabel).font(.system(size: 12, weight: .medium))
-                        Text("Storage & sync").font(.system(size: 10)).foregroundStyle(Palette.secondary)
+                        Text(model.hasPendingSync ? "Changes waiting in memory" : (model.syncIssue == nil ? "Storage & sync" : "Sync will retry"))
+                            .font(.system(size: 10)).foregroundStyle(Palette.secondary)
                     }
                     Spacer(); Image(systemName: "chevron.right").font(.system(size: 10))
                 }.foregroundStyle(Palette.text)

@@ -71,12 +71,12 @@ final class ClipboardMonitor {
         if #available(macOS 15.4, *), pasteboard.accessBehavior == .alwaysDeny { return }
         let source = sourceProvider()
         let sourceID = source.bundleID
+        var metadata = CaptureMetadata(sourceBundleID: sourceID, secureInput: secureInputProvider(),
+            sourceChanged: sourceID != frontmostID || Date() < transitionUntil)
+        if let rejection = policy.rejection(for: metadata) { onRejection?(rejection); return }
         let items = pasteboard.pasteboardItems ?? []
-        let types = Set(items.flatMap { $0.types.map(\.rawValue) })
-        var metadata = CaptureMetadata(sourceBundleID: sourceID, types: types,
-            secureInput: secureInputProvider(),
-            sourceChanged: sourceID != frontmostID || Date() < transitionUntil,
-            itemCount: items.count)
+        metadata.types = Set(items.flatMap { $0.types.map(\.rawValue) })
+        metadata.itemCount = items.count
         if let rejection = policy.rejection(for: metadata) { onRejection?(rejection); return }
         // Source markers are hints, never authority for allowing a protected foreground app.
         metadata.claimedSourceBundleID = pasteboard.string(forType: .init("org.nspasteboard.source"))

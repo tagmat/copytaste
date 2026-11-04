@@ -16,6 +16,7 @@ final class AppIntegrationTests: XCTestCase {
         preferences.storageMode = .iCloud
         defaults.set(try JSONEncoder().encode(preferences), forKey: "preferences.v1")
         let phrase = "a synthetic cloud recovery phrase"
+        _ = try CloudVault.connect(url: url, passphrase: phrase)
         let model = AppModel(defaults: defaults, pasteboard: board, authenticateOwner: {}, cloudLocation: { url })
         await model.unlock(syncPassphrase: phrase)
         XCTAssertFalse(model.isLocked)
@@ -33,6 +34,59 @@ final class AppIntegrationTests: XCTestCase {
         model.syncNow() // The regular timer path must no longer be suspended.
         XCTAssertTrue(model.snapshot.entries.contains { $0.id == clip.id })
         model.shutdown()
+    }
+
+    @MainActor func testMissingCloudFileKeepsEditsAndDeletesPendingUntilRetry() async throws {
+        let suite = "net.tagmat.copytaste.test." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("history.copytaste")
+        let offline = directory.appendingPathComponent("offline.copytaste")
+        let board = NSPasteboard(name: .init(suite))
+        defer { board.releaseGlobally() }
+        var preferences = Preferences()
+        preferences.storageMode = .iCloud
+        defaults.set(try JSONEncoder().encode(preferences), forKey: "preferences.v1")
+        let phrase = "a synthetic recovery test phrase"
+        let vault = try CloudVault.connect(url: url, passphrase: phrase)
+        let old = ClipEntry(kind: .text, text: "Old synthetic clip", sourceName: "Fixture", sourceBundleID: "org.example.editor")
+        let stale = SyncState(snapshot: VaultSnapshot(entries: [old]))
+        _ = try vault.exchange(stale, preferences: preferences)
+        let model = AppModel(defaults: defaults, pasteboard: board, authenticateOwner: {}, cloudLocation: { url })
+        defer { model.shutdown() }
+        await model.unlock(syncPassphrase: phrase)
+        XCTAssertFalse(model.isLocked)
+
+        try FileManager.default.moveItem(at: url, to: offline)
+        XCTAssertNil(model.saveClip(id: old.id, title: "Edited", text: "New synthetic clip"))
+        XCTAssertEqual(model.snapshot.entries.map(\.text), ["New synthetic clip"])
+        XCTAssertTrue(model.hasPendingSync)
+        XCTAssertNotNil(model.syncIssue)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+
+        try FileManager.default.moveItem(at: offline, to: url)
+        model.syncNow(userInitiated: true)
+        XCTAssertFalse(model.hasPendingSync)
+        XCTAssertNil(model.syncIssue)
+        let result = try vault.exchange(stale, preferences: preferences)
+        XCTAssertEqual(result.snapshot.entries.map(\.text), ["New synthetic clip"])
+    }
+
+    @MainActor func testEditingKeepsPinAndCollectionAndRejectsSecrets() async throws {
+        let model = AppModel(demo: true)
+        defer { model.shutdown() }
+        let old = try XCTUnwrap(model.snapshot.entries.first)
+        XCTAssertNotNil(model.saveClip(id: old.id, title: "", text: "password=synthetic"))
+        XCTAssertTrue(model.snapshot.entries.contains(where: { $0.id == old.id }))
+        XCTAssertNil(model.saveClip(id: old.id, title: "Fresh label", text: "Revised sample note"))
+        let edited = try XCTUnwrap(model.selectedEntry)
+        XCTAssertEqual(edited.title, "Fresh label")
+        XCTAssertEqual(edited.isPinned, old.isPinned)
+        XCTAssertEqual(edited.collectionID, old.collectionID)
+        XCTAssertFalse(model.snapshot.entries.contains(where: { $0.id == old.id }))
+        XCTAssertNil(model.saveClip(id: nil, title: "A new snippet", text: "Synthetic workflow sample"))
+        XCTAssertEqual(model.selectedEntry?.text, "Synthetic workflow sample")
     }
     @MainActor func testDemoDoesNotWriteSettingsAndUsesIsolatedPasteboard() async throws {
         let suite = "net.tagmat.copytaste.test." + UUID().uuidString

@@ -10,6 +10,10 @@ public struct SyncState: Codable, Equatable, Sendable {
 
     public init(snapshot: VaultSnapshot = VaultSnapshot()) { self.snapshot = snapshot }
 
+    public var deletionLogWithinLimits: Bool {
+        deletions.count <= 20_000 && deletedCollections.count <= 2_000
+    }
+
     public mutating func recordChanges(from old: VaultSnapshot, to new: VaultSnapshot, now: Date = Date()) {
         let remaining = Set(new.entries.map(\.fingerprint))
         for entry in old.entries where !remaining.contains(entry.fingerprint) { deletions[entry.fingerprint] = now }
@@ -50,10 +54,12 @@ public struct SyncState: Codable, Equatable, Sendable {
 }
 
 public enum CloudVaultError: Error, LocalizedError {
-    case unavailable, weakPassphrase, invalidFile, changedVault, invalidContent, tooManyDeletes, collectionLimit
+    case unavailable, downloading, missingVault, weakPassphrase, invalidFile, changedVault, invalidContent, tooManyDeletes, collectionLimit
     public var errorDescription: String? {
         switch self {
         case .unavailable: "iCloud Drive is unavailable. Sign in to iCloud and enable iCloud Drive in System Settings."
+        case .downloading: "iCloud Drive is downloading the encrypted vault. Try again when it is available."
+        case .missingVault: "The encrypted vault is missing. Restore it in iCloud Drive before trying again."
         case .weakPassphrase: "Use a sync passphrase of at least 16 characters (up to 1,024 UTF-8 bytes). Keep it safe; it cannot be recovered."
         case .invalidFile: "The sync vault is invalid or the passphrase is incorrect. The file was not replaced."
         case .changedVault: "The sync vault was replaced with a different vault. Lock and reopen with its passphrase."
@@ -79,29 +85,22 @@ public struct CloudVault: Sendable {
         return root.appendingPathComponent("CopyTaste", isDirectory: true).appendingPathComponent("history.copytaste")
     }
 
-    public static func connect(url: URL, passphrase: String) throws -> CloudVault {
+    public static func connect(url: URL, passphrase: String, createIfMissing: Bool = true) throws -> CloudVault {
         guard passphrase.count >= 16, passphrase.utf8.count <= 1_024 else { throw CloudVaultError.weakPassphrase }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // Do not initialise over known evicted iCloud placeholders.
-        let placeholder = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".icloud")
-        if FileManager.default.fileExists(atPath: placeholder.path) && !FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.startDownloadingUbiquitousItem(at: url)
-            throw CloudVaultError.unavailable
-        }
-        if FileManager.default.fileExists(atPath: url.path),
-           let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]),
-           values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus == .notDownloaded {
-            try FileManager.default.startDownloadingUbiquitousItem(at: url)
-            throw CloudVaultError.unavailable
-        }
+        try requireDownloaded(url)
         var connected: CloudVault?
         try coordinated(url) { location in
+            try requireDownloaded(location)
             let salt: Data
             if FileManager.default.fileExists(atPath: location.path) {
                 let file = try readBounded(location)
                 guard file.count > 52, file.starts(with: magic) else { throw CloudVaultError.invalidFile }
                 salt = file.subdata(in: 8..<24)
-            } else { salt = SymmetricKey(size: .bits128).withUnsafeBytes { Data($0) } }
+            } else {
+                guard createIfMissing else { throw CloudVaultError.missingVault }
+                salt = SymmetricKey(size: .bits128).withUnsafeBytes { Data($0) }
+            }
             let bytes = Data(passphrase.utf8)
             let vault = CloudVault(url: url, salt: salt, key: try derive(bytes, salt: salt), passphraseBytes: bytes)
             if FileManager.default.fileExists(atPath: location.path) {
@@ -116,8 +115,10 @@ public struct CloudVault: Sendable {
     // NSFileCoordinator serialises local access. Unresolved iCloud versions are merged before writing.
     public func exchange(_ local: SyncState, preferences: Preferences) throws -> SyncState {
         var result = local
+        try Self.requireDownloaded(url)
         try Self.coordinated(url) { location in
-            guard FileManager.default.fileExists(atPath: location.path) else { throw CloudVaultError.unavailable }
+            try Self.requireDownloaded(location)
+            guard FileManager.default.fileExists(atPath: location.path) else { throw CloudVaultError.missingVault }
             let remote = try decode(Self.readBounded(location))
             var merged = local.merging(remote)
             let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: location) ?? []
@@ -128,18 +129,30 @@ public struct CloudVault: Sendable {
             safe.entries.removeAll { entry in
                 policy.isExcluded(entry.sourceBundleID) || entry.sourceBundleID.isEmpty ||
                 (entry.text.map { policy.rejection(forText: $0) != nil } ?? false) ||
+                (entry.title.map { $0.utf8.count > 512 || CapturePolicy.containsSecret($0) } ?? false) ||
                 (entry.kind == .file && (entry.fileData == nil || entry.fileName == nil ||
                     policy.rejection(forFile: entry.fileData ?? Data(), name: entry.fileName ?? "") != nil)) ||
                 entry.byteCount > (entry.kind == .file ? CapturePolicy.maxFileBytes : (entry.kind == .image ? CapturePolicy.maxImageBytes : CapturePolicy.maxTextBytes))
             }
             let pruned = History.pruned(safe, preferences: preferences)
             merged.recordChanges(from: merged.snapshot, to: pruned)
-            guard merged.deletions.count <= 20_000, merged.deletedCollections.count <= 2_000 else { throw CloudVaultError.tooManyDeletes }
+            guard merged.deletionLogWithinLimits else { throw CloudVaultError.tooManyDeletes }
             if merged != remote || !conflicts.isEmpty { try encode(merged).write(to: location, options: .atomic) }
             for conflict in conflicts { conflict.isResolved = true }
             result = merged
         }
         return result
+    }
+
+    private static func requireDownloaded(_ url: URL) throws {
+        let fileManager = FileManager.default
+        let placeholder = url.deletingLastPathComponent().appendingPathComponent("." + url.lastPathComponent + ".icloud")
+        let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+        let waitingForDownload = values?.isUbiquitousItem == true && values?.ubiquitousItemDownloadingStatus == .notDownloaded
+        if waitingForDownload || (!fileManager.fileExists(atPath: url.path) && fileManager.fileExists(atPath: placeholder.path)) {
+            try fileManager.startDownloadingUbiquitousItem(at: url)
+            throw CloudVaultError.downloading
+        }
     }
 
     private func encode(_ state: SyncState) throws -> Data {
@@ -165,7 +178,7 @@ public struct CloudVault: Sendable {
             let state = try JSONDecoder().decode(SyncState.self, from: plain)
             guard state.snapshot.version == 1, state.snapshot.entries.count <= 1_000,
                   state.snapshot.collections.count <= 30,
-                  state.deletions.count <= 20_000, state.deletedCollections.count <= 2_000 else { throw CloudVaultError.invalidContent }
+                  state.deletionLogWithinLimits else { throw CloudVaultError.invalidContent }
             return state
         } catch let error as CloudVaultError { throw error }
         catch { throw CloudVaultError.invalidFile }

@@ -24,6 +24,8 @@ final class AppModel: ObservableObject {
     @Published var isAuthenticating = false
     @Published var showSettings = false
     @Published private(set) var lastSyncAt: Date?
+    @Published private(set) var syncIssue: String?
+    @Published private(set) var hasPendingSync = false
     let isDemo: Bool
     private var key: SymmetricKey?
     private var monitor: ClipboardMonitor?
@@ -36,7 +38,8 @@ final class AppModel: ObservableObject {
     private var cloudVault: CloudVault?
     private var syncState = SyncState()
     private var syncTimer: Timer?
-    private var syncSuspended = false
+    private var syncFailures = 0
+    private var nextSyncAttempt = ContinuousClock.now
     private let transfers = TransferFileStore()
     private let defaults: UserDefaults
     private let pasteboard: NSPasteboard
@@ -130,32 +133,38 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    private func commit(_ state: VaultSnapshot, clearAll: Bool = false) {
-        guard !isLocked else { return }
-        do {
-            if preferences.storageMode == .iCloud {
-                guard let cloudVault else { throw CloudVaultError.unavailable }
-                var pending = syncState
-                if clearAll { pending.clearedAt = Date() }
-                pending.recordChanges(from: snapshot, to: state)
-                let exchanged = try cloudVault.exchange(pending, preferences: preferences)
-                syncState = exchanged
-                snapshot = exchanged.snapshot
-                lastSyncAt = Date()
-                syncSuspended = false
-                return
+    @discardableResult private func commit(_ state: VaultSnapshot, clearAll: Bool = false) -> Bool {
+        guard !isLocked else { return false }
+        if preferences.storageMode == .iCloud {
+            guard clearAll || state != snapshot else { return true }
+            var pending = syncState
+            if clearAll { pending.clearedAt = Date() }
+            pending.recordChanges(from: snapshot, to: state)
+            guard pending.deletionLogWithinLimits else {
+                storageFailed(CloudVaultError.tooManyDeletes)
+                return false
             }
+            syncState = pending
+            snapshot = state
+            hasPendingSync = true
+            syncNow()
+            return true
+        }
+        do {
             if let url = vaultURL {
                 guard let key else { throw KeyStoreError.missing }
                 try EncryptedVault(url: url).save(archived(state, settings: preferences), key: key)
             }
             snapshot = state
-        } catch { storageFailed(error) }
+            return true
+        } catch {
+            storageFailed(error)
+            return false
+        }
     }
 
     private func storageFailed(_ error: Error) {
         isCapturing = false
-        if preferences.storageMode == .iCloud { syncSuspended = true }
         preferences.captureEnabled = false
         savePreferences()
         monitor?.stop()
@@ -176,10 +185,6 @@ final class AppModel: ObservableObject {
 
     func toggleCapture() {
         guard !isDemo, !isLocked else { return }
-        if preferences.storageMode == .iCloud && syncSuspended {
-            syncNow(userInitiated: true)
-            guard !syncSuspended else { return }
-        }
         preferences.captureEnabled = !isCapturing
         savePreferences()
         configureMonitor()
@@ -219,6 +224,48 @@ final class AppModel: ObservableObject {
         }
         notify(isDemo ? "Copied to the isolated demo clipboard" : "Copied · paste with ⌘V")
         return true
+    }
+
+    var ownsCurrentClipboard: Bool {
+        ownedClipboardCount == pasteboard.changeCount
+    }
+
+    func saveClip(id: UUID?, title: String, text: String?) -> String? {
+        guard !isLocked else { return "Unlock history to edit clips." }
+        let policy = CapturePolicy()
+        let label = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if label.count > 120 || label.utf8.count > 512 { return "Use a shorter title." }
+        if !label.isEmpty && policy.rejection(forText: label) != nil { return "The title may contain sensitive data." }
+        var state = snapshot
+        let now = Date()
+        let index = id.flatMap { id in state.entries.firstIndex { $0.id == id } }
+        if id != nil && index == nil { return "This clip is no longer in history." }
+        var entry = index.map { state.entries[$0] } ?? ClipEntry(kind: .text, sourceName: "Snippet", sourceBundleID: CapturePolicy.ownBundleID, createdAt: now)
+        if entry.kind == .text || entry.kind == .link {
+            guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter some text." }
+            if text.utf8.count > CapturePolicy.maxTextBytes { return "Text exceeds the 512 KB limit." }
+            if policy.rejection(forText: text) != nil { return "The text may contain sensitive data." }
+            if text != entry.text {
+                entry.text = text
+                entry.kind = CapturePolicy.kind(for: text)
+                entry.createdAt = now
+                let fingerprint = entry.fingerprint
+                if state.entries.contains(where: { $0.id != entry.id && $0.kind == entry.kind && $0.byteCount == entry.byteCount && $0.fingerprint == fingerprint }) {
+                    return "A clip with this content already exists."
+                }
+                // A body replacement tombstones the old fingerprint in shared history.
+                if index != nil { entry.id = UUID() }
+            }
+        }
+        entry.title = label.isEmpty ? nil : label
+        entry.modifiedAt = now
+        if let index { state.entries[index] = entry }
+        else { state.entries.insert(entry, at: 0) }
+        state = History.pruned(state, preferences: preferences)
+        guard state.entries.contains(where: { $0.id == entry.id }) else { return "History is at its limit. Remove a clip or raise the limit." }
+        guard commit(state) else { return "The clip could not be saved." }
+        selectedID = entry.id
+        return nil
     }
 
     func togglePin(_ entry: ClipEntry) {
@@ -325,6 +372,22 @@ final class AppModel: ObservableObject {
         savePreferences()
     }
 
+    func setSelectorShortcut(_ shortcut: SelectorShortcut) {
+        preferences.selectorShortcut = shortcut
+        savePreferences()
+    }
+
+    func setImageTextSearch(_ enabled: Bool) {
+        preferences.imageTextSearch = enabled
+        savePreferences()
+    }
+
+    func setKeepPinsPastExpiry(_ enabled: Bool) {
+        preferences.keepPinsPastExpiry = enabled
+        savePreferences()
+        prune()
+    }
+
     func applyStorage(_ mode: StorageMode, pinnedOnly: Bool, syncPassphrase: String = "") async {
         guard !isDemo, !isLocked, !isAuthenticating else { return }
         var next = preferences
@@ -371,7 +434,7 @@ final class AppModel: ObservableObject {
             key = mode == .memory ? nil : nextKey
             cloudVault = nil
             syncState = SyncState()
-            lastSyncAt = nil
+            resetSyncStatus()
             savePreferences()
             notify("Storage updated · \(storageLabel)")
         } catch { errorMessage = "Storage was not changed. \(error.localizedDescription)" }
@@ -394,15 +457,14 @@ final class AppModel: ObservableObject {
                 defer { isAuthenticating = false }
                 let url = try cloudLocation()
                 let connected = try await Task.detached(priority: .userInitiated) {
-                    try CloudVault.connect(url: url, passphrase: syncPassphrase)
+                    try CloudVault.connect(url: url, passphrase: syncPassphrase, createIfMissing: false)
                 }.value
                 guard lockEpoch == epoch else { return }
                 let exchanged = try connected.exchange(SyncState(), preferences: preferences)
                 cloudVault = connected
                 syncState = exchanged
                 snapshot = exchanged.snapshot
-                lastSyncAt = Date()
-                syncSuspended = false
+                resetSyncStatus(lastMerge: Date())
             } else if let url = vaultURL {
                 try await authenticate()
                 guard lockEpoch == epoch else { return }
@@ -431,7 +493,7 @@ final class AppModel: ObservableObject {
         key = nil
         cloudVault = nil
         syncState = SyncState()
-        lastSyncAt = nil
+        resetSyncStatus()
         selectedID = nil
         query = ""
         scope = .all
@@ -475,8 +537,7 @@ final class AppModel: ObservableObject {
             syncState = exchanged
             snapshot = exchanged.snapshot
             key = nil
-            lastSyncAt = Date()
-            syncSuspended = false
+            resetSyncStatus(lastMerge: Date())
             savePreferences()
             notify("iCloud sync enabled · encrypted with your sync passphrase")
         } catch { errorMessage = "iCloud sync was not enabled. \(error.localizedDescription)" }
@@ -484,14 +545,26 @@ final class AppModel: ObservableObject {
 
     func syncNow(userInitiated: Bool = false) {
         guard !isLocked, preferences.storageMode == .iCloud, let cloudVault,
-              !syncSuspended || userInitiated else { return }
+              userInitiated || ContinuousClock.now >= nextSyncAttempt else { return }
         do {
             let exchanged = try cloudVault.exchange(syncState, preferences: preferences)
             syncState = exchanged
-            snapshot = exchanged.snapshot
-            lastSyncAt = Date()
-            syncSuspended = false
-        } catch { storageFailed(error) }
+            if snapshot != exchanged.snapshot { snapshot = exchanged.snapshot }
+            resetSyncStatus(lastMerge: Date())
+        } catch {
+            syncFailures = min(syncFailures + 1, 5)
+            nextSyncAttempt = ContinuousClock.now + .seconds(min(90, 6 << (syncFailures - 1)))
+            syncIssue = error.localizedDescription
+            if userInitiated { errorMessage = "Sync could not merge. \(error.localizedDescription)" }
+        }
+    }
+
+    private func resetSyncStatus(lastMerge: Date? = nil) {
+        lastSyncAt = lastMerge
+        syncIssue = nil
+        hasPendingSync = false
+        syncFailures = 0
+        nextSyncAttempt = ContinuousClock.now
     }
 
     private func observeLocking() {

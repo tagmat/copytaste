@@ -49,6 +49,17 @@ final class PasteServiceTests: XCTestCase {
         XCTAssertFalse(sent)
     }
 
+    @MainActor func testNewClipboardWriteDuringActivationCancelsPaste() async {
+        var clipboardIsCurrent = true
+        var sent = false
+        let service = PasteService(trusted: { true }, secureInput: { false }, frontmostPID: { 42 },
+            activate: { _ in true }, send: { _ in sent = true }, settle: { clipboardIsCurrent = false })
+        let result = await service.perform(copy: { true }, destination: PasteDestination(processID: 42, name: "Fixture"),
+            automatic: true, demo: false, clipboardIsCurrent: { clipboardIsCurrent })
+        XCTAssertEqual(result, .clipboardChanged)
+        XCTAssertFalse(sent)
+    }
+
     @MainActor func testFailedCopyAndSecureInputPreventPosting() async {
         var sent = false
         let service = PasteService(trusted: { true }, secureInput: { true }, frontmostPID: { 42 },

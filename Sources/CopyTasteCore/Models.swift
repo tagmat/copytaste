@@ -44,7 +44,7 @@ public struct ClipEntry: Codable, Identifiable, Equatable, Sendable {
         if let title, !title.isEmpty { return title }
         if kind == .image { return "Image" }
         if kind == .file { return fileName ?? "File" }
-        return String((text ?? "").split(separator: "\n", omittingEmptySubsequences: true).first ?? "Text")
+        return String((text ?? "").prefix(512).split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true).first ?? "Text")
     }
 
     public var byteCount: Int { (text?.utf8.count ?? 0) + (imageData?.count ?? 0) + (fileData?.count ?? 0) }
@@ -82,6 +82,19 @@ public enum SelectorLayout: String, Codable, CaseIterable, Sendable {
     case pinnedAndRecent, orbit
 }
 
+public enum SelectorShortcut: String, Codable, CaseIterable, Sendable {
+    case shiftCommand, optionCommand, controlOption, disabled
+
+    public var label: String {
+        switch self {
+        case .shiftCommand: "⇧⌘V"
+        case .optionCommand: "⌥⌘V"
+        case .controlOption: "⌃⌥V"
+        case .disabled: "Off"
+        }
+    }
+}
+
 public struct Preferences: Codable, Equatable, Sendable {
     public var schemaVersion = 2
     public var captureEnabled = false
@@ -89,6 +102,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var captureFiles = true
     public var autoPaste = true
     public var selectorLayout: SelectorLayout = .pinnedAndRecent
+    public var selectorShortcut: SelectorShortcut = .shiftCommand
+    public var imageTextSearch = false
+    public var keepPinsPastExpiry = false
     public var retentionDays = 7
     public var maximumEntries = 300
     public var clearClipboardAfterSeconds = 45
@@ -101,6 +117,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, captureEnabled, captureImages, captureFiles, autoPaste, selectorLayout, retentionDays, maximumEntries
         case clearClipboardAfterSeconds, excludedBundleIDs, storageMode, persistPinnedOnly, customFolderPath
+        case selectorShortcut, imageTextSearch, keepPinsPastExpiry
     }
 
     public init(from decoder: Decoder) throws {
@@ -113,6 +130,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         autoPaste = try values.decodeIfPresent(Bool.self, forKey: .autoPaste) ?? true
         captureFiles = try values.decodeIfPresent(Bool.self, forKey: .captureFiles) ?? true
         selectorLayout = (try? values.decodeIfPresent(SelectorLayout.self, forKey: .selectorLayout)) ?? .pinnedAndRecent
+        selectorShortcut = (try? values.decodeIfPresent(SelectorShortcut.self, forKey: .selectorShortcut)) ?? .shiftCommand
+        imageTextSearch = (try? values.decodeIfPresent(Bool.self, forKey: .imageTextSearch)) ?? false
+        keepPinsPastExpiry = (try? values.decodeIfPresent(Bool.self, forKey: .keepPinsPastExpiry)) ?? false
         retentionDays = try values.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
         maximumEntries = try values.decodeIfPresent(Int.self, forKey: .maximumEntries) ?? 300
         clearClipboardAfterSeconds = try values.decodeIfPresent(Int.self, forKey: .clearClipboardAfterSeconds) ?? 45

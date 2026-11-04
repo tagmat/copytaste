@@ -9,7 +9,7 @@ struct PasteDestination: Equatable {
 }
 
 enum PasteOutcome: Equatable {
-    case pasted, copied, permissionRequired, destinationChanged, failed
+    case pasted, copied, permissionRequired, destinationChanged, clipboardChanged, failed
 }
 
 @MainActor
@@ -32,7 +32,7 @@ final class PasteService {
     }
 
     func perform(copy: () -> Bool, destination: PasteDestination?, automatic: Bool, demo: Bool,
-                 stillValid: () -> Bool = { true }) async -> PasteOutcome {
+                 stillValid: () -> Bool = { true }, clipboardIsCurrent: () -> Bool = { true }) async -> PasteOutcome {
         guard stillValid(), copy() else { return .failed }
         guard automatic, !demo else { return .copied }
         guard trusted() else { return .permissionRequired }
@@ -40,6 +40,7 @@ final class PasteService {
               activate(destination.processID) else { return .copied }
         await settle()
         guard stillValid() else { return .destinationChanged }
+        guard clipboardIsCurrent() else { return .clipboardChanged }
         guard trusted() else { return .permissionRequired }
         guard !secureInput(), frontmostPID() == destination.processID else { return .destinationChanged }
         send(destination.processID)
