@@ -11,15 +11,18 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(settings.storageMode, .encryptedFolder)
         XCTAssertEqual(settings.excludedBundleIDs, ["org.example.private"])
         XCTAssertTrue(settings.persistPinnedOnly)
+        XCTAssertFalse(settings.clearHistoryOnSessionLock)
     }
 
     func testExplicitImageAndPasteOptOutsSurviveRelaunch() throws {
         var settings = Preferences()
         settings.captureImages = false
         settings.autoPaste = false
+        settings.clearHistoryOnSessionLock = true
         let restored = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(settings))
         XCTAssertFalse(restored.captureImages)
         XCTAssertFalse(restored.autoPaste)
+        XCTAssertTrue(restored.clearHistoryOnSessionLock)
     }
 
     func testUnknownLayoutPreservesStorageAndPrivacyPreferences() throws {

@@ -53,7 +53,9 @@ final class AppIntegrationTests: XCTestCase {
         let old = ClipEntry(kind: .text, text: "Old synthetic clip", sourceName: "Fixture", sourceBundleID: "org.example.editor")
         let stale = SyncState(snapshot: VaultSnapshot(entries: [old]))
         _ = try vault.exchange(stale, preferences: preferences)
-        let model = AppModel(defaults: defaults, pasteboard: board, authenticateOwner: {}, cloudLocation: { url })
+        let screen = NotificationCenter()
+        let model = AppModel(defaults: defaults, pasteboard: board, authenticateOwner: {}, cloudLocation: { url },
+            workspaceNotifications: NotificationCenter(), screenNotifications: screen)
         defer { model.shutdown() }
         await model.unlock(syncPassphrase: phrase)
         XCTAssertFalse(model.isLocked)
@@ -64,6 +66,13 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertTrue(model.hasPendingSync)
         XCTAssertNotNil(model.syncIssue)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        screen.post(name: .init("com.apple.screenIsLocked"), object: nil)
+        XCTAssertTrue(model.isLocked)
+        XCTAssertTrue(model.hasPendingSync)
+        screen.post(name: .init("com.apple.screenIsUnlocked"), object: nil)
+        XCTAssertFalse(model.isLocked)
+        XCTAssertEqual(model.snapshot.entries.map(\.text), ["New synthetic clip"])
+        XCTAssertTrue(model.hasPendingSync)
 
         try FileManager.default.moveItem(at: offline, to: url)
         model.syncNow(userInitiated: true)

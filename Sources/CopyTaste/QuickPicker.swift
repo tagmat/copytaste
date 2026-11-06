@@ -114,19 +114,20 @@ private final class PickerPanel: NSPanel {
         generation += 1
         let ticket = generation
         let target = destination
+        let session = model.sessionEpoch
         presentation.chosenID = entry.id
         presentation.phase = .departing
         Task { @MainActor [weak self] in
             guard let self else { return }
             if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { try? await Task.sleep(for: .milliseconds(180)) }
-            guard self.generation == ticket, !self.model.isLocked else { return }
+            guard self.generation == ticket, self.model.sessionEpoch == session, !self.model.isLocked else { return }
             self.panel.orderOut(nil)
             self.panel.contentView = nil
             let outcome = await self.pasteService.perform(copy: { self.model.copy(entry) }, destination: target,
                 automatic: self.model.preferences.autoPaste && !copyOnly, demo: self.model.isDemo,
-                stillValid: { self.generation == ticket && !self.model.isLocked },
+                stillValid: { self.generation == ticket && self.model.sessionEpoch == session && !self.model.isLocked },
                 clipboardIsCurrent: { self.model.ownsCurrentClipboard })
-            guard self.generation == ticket, !self.model.isLocked else { return }
+            guard self.generation == ticket, self.model.sessionEpoch == session, !self.model.isLocked else { return }
             switch outcome {
             case .pasted: self.model.notify("Paste sent to \(target?.name ?? "your app")")
             case .permissionRequired:
@@ -538,13 +539,14 @@ struct QuickPicker: View {
         VStack(spacing: 15) {
             Image(systemName: "lock.shield").font(.system(size: 32, weight: .light)).foregroundStyle(Palette.mint)
             Text("Your orbit is private.").font(.system(size: 24, weight: .medium, design: .rounded))
-            Text(model.preferences.storageMode == .memory ? "The memory session was cleared." : "Authenticate to unlock encrypted history.")
+            Text(model.isSessionSuspended ? "Capture resumes when your Mac is unlocked and awake." :
+                (model.preferences.storageMode == .memory ? "The memory session was cleared." : "Authenticate to unlock encrypted history."))
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
             if model.preferences.storageMode == .iCloud { SecureField("Sync passphrase", text: $syncPassphrase).textFieldStyle(.roundedBorder).frame(width: 270) }
             Button(model.isAuthenticating ? "Unlocking…" : "Unlock") {
                 let phrase = syncPassphrase; syncPassphrase = ""
                 Task { await model.unlock(syncPassphrase: phrase) }
-            }.buttonStyle(.borderedProminent).disabled(model.isAuthenticating)
+            }.buttonStyle(.borderedProminent).disabled(model.isAuthenticating || model.isSessionSuspended)
         }.padding(30).modifier(FrostedSurface()).opacity(isOpen ? 1 : 0)
     }
     private func resetSelection() {

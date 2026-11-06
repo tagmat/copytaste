@@ -22,7 +22,8 @@ Use synthetic data and a dedicated account for permission tests.
 - Enable Search text in images and search for `Golden hour study` in the sample session. The search should return the palette image. Close the selector to discard the OCR index and open it again to test rebuilding.
 - In a disposable local sync fixture, move the vault file out of the way. Verify edits stay visible and sync reports pending changes. Restore the same file and choose Sync Now to verify the edits merge.
 - Select a file, then Clear History or lock. Verify the owned temporary transfer is removed and newer clipboard values are preserved.
-- Exercise encrypted local/custom-folder storage, cancelled authentication, missing Keychain, failed writes, retention and screen/session/sleep locking with disposable vaults.
+- Exercise encrypted local/custom-folder storage, cancelled authentication, missing Keychain, failed writes and retention with disposable vaults.
+- With capture on, copy a synthetic note, lock and unlock the Mac, then copy another. Both should appear, while copies made during suspension should be skipped. Repeat with Capture paused and verify it stays paused. Test overlapping display and system sleep, the optional clearing setting, and manual Lock & Clear Memory separately.
 - Use two Macs with a test iCloud account for real delivery, offline changes, placeholder downloads, conflict versions and deletion propagation. Update all peers before syncing file entries.
 - Test login-item approval, Developer ID signing, notarisation and Intel execution separately.
 

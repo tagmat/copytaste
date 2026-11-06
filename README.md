@@ -99,7 +99,7 @@ File contents stay in RAM or the chosen encrypted history. **Pasting or copying 
 
 ## Choose what stays
 
-| Setting | Storage | On quit or lock |
+| Setting | Storage | On quit or manual app lock |
 | --- | --- | --- |
 | Memory only — default | Process memory | Session discarded |
 | Encrypted on this Mac | AES-256-GCM in Application Support | Saved history remains encrypted |
@@ -107,7 +107,9 @@ File contents stay in RAM or the chosen encrypted history. **Pasting or copying 
 | iCloud Drive sync | Shared passphrase-encrypted file | Synced history remains encrypted |
 | Save pinned items only | Optional rule for local encrypted vaults | Other clips are discarded |
 
-Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 clips. **Keep pins past expiry** skips the age limit for pins and gives them priority within the count and byte limits. Match this choice across Macs sharing an iCloud vault. Expiration runs during use and on reopening. Memory mode clears pins and collections on lock or quit. macOS may page memory to disk, so use FileVault to protect your Mac.
+Entries expire after 7 days by default, including pins. Choose 1, 7 or 30 days and 100, 300 or 1,000 clips. **Keep pins past expiry** skips the age limit for pins and gives them priority within the count and byte limits. Match this choice across Macs sharing an iCloud vault. Expiration runs during use and on reopening. Memory mode clears pins and collections on manual app lock or quit. macOS may page memory to disk, so use FileVault to protect your Mac.
+
+Screen lock and sleep pause capture and keep the session in RAM by default. After the Mac is unlocked and awake, CopyTaste resumes your previous Capture setting and skips copies made during the pause. In **Advanced Settings → Privacy & capture**, enable **Clear history when Mac locks or sleeps** to clear the session instead. With this option, memory capture restarts after you return, while saved vaults require app authentication. **Lock & Clear Memory** always clears the session and requires manual unlocking.
 
 Local vaults use a non-synchronising Keychain key. Opening saved history requires Mac authentication. A copied local vault requires the original keychain; losing that key loses access. Apply storage changes explicitly. The new vault is written before the old active local vault is removed. Backups and filesystem snapshots cannot be revoked by the app.
 
@@ -115,11 +117,11 @@ Local vaults use a non-synchronising Keychain key. Opening saved history require
 
 In advanced settings, choose **iCloud Drive · encrypted sync**, enter a unique phrase of at least 16 characters and use the same phrase on every Mac. iCloud Drive must already be enabled in macOS. Update all participating Macs to 0.2 before syncing file entries.
 
-Clips, files, pins and collections are merged through `iCloud Drive/CopyTaste/history.copytaste`. Data is encrypted before writing using AES-256-GCM and a PBKDF2-HMAC-SHA256 key (600,000 iterations, random salt). The phrase is not saved and cannot be recovered; enter it after locking or restarting.
+Clips, files, pins and collections are merged through `iCloud Drive/CopyTaste/history.copytaste`. Data is encrypted before writing using AES-256-GCM and a PBKDF2-HMAC-SHA256 key (600,000 iterations, random salt). The phrase is not saved and cannot be recovered. Enter it after a manual app lock, session clearing or restart.
 
-While open and unlocked, CopyTaste checks for merges every six seconds. A failed merge keeps changes in bounded memory and retries with increasing delays. Advanced settings show the issue, whether changes are waiting and the last successful local merge. Use **Sync Now** to retry immediately. Lock or quit discards pending changes that could not be written. If an existing vault is missing when reopened, restore it in iCloud Drive first.
+While open and unlocked, CopyTaste checks for merges every six seconds. A failed merge keeps changes in bounded memory and retries with increasing delays. Advanced settings show the issue, whether changes are waiting and the last successful local merge. Use **Sync Now** to retry immediately. Manual app lock, optional session clearing or quit discards pending changes that could not be written. If an existing vault is missing when reopened, restore it in iCloud Drive first.
 
-Deletions prevent stale peers restoring removed items. macOS handles network delivery, and a local merge time only reports the local file operation. Disconnecting leaves the shared encrypted file for other Macs. Locking stops capture and sync and unloads the session.
+Deletions prevent stale peers restoring removed items. macOS handles network delivery, and a local merge time only reports the local file operation. Disconnecting leaves the shared encrypted file for other Macs. Screen lock pauses capture and sync. Manual app lock also unloads the session.
 
 The merge and encryption protocol is tested with isolated temporary files. Live delivery, account access and iCloud conflict handling still need two-Mac validation. There are no app accounts, analytics, remote previews, content logs or custom sync servers.
 

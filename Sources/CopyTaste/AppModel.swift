@@ -25,6 +25,10 @@ private enum FolderError: LocalizedError {
     }
 }
 
+private enum SessionSuspension: Hashable, Sendable {
+    case systemSleep, displaySleep, inactiveSession, screenLock
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var snapshot = VaultSnapshot()
@@ -45,7 +49,9 @@ final class AppModel: ObservableObject {
     let isDemo: Bool
     private var key: SymmetricKey?
     private var monitor: ClipboardMonitor?
-    private var observers: [NSObjectProtocol] = []
+    private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
+    @Published private var sessionSuspensions: Set<SessionSuspension> = []
+    private var resumeAfterSession = false
     private var maintenanceTimer: Timer?
     private var clearTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -64,7 +70,10 @@ final class AppModel: ObservableObject {
 
     init(demo: Bool = false, defaults: UserDefaults = .standard, pasteboard: NSPasteboard? = nil,
          authenticateOwner: @escaping () async throws -> Void = DeviceAuthentication.authenticate,
-         cloudLocation: @escaping () throws -> URL = CloudVault.iCloudURL) {
+         cloudLocation: @escaping () throws -> URL = CloudVault.iCloudURL,
+         workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
+         screenNotifications: NotificationCenter = DistributedNotificationCenter.default(),
+         makeMonitor: (NSPasteboard) -> ClipboardMonitor = { ClipboardMonitor(pasteboard: $0) }) {
         isDemo = demo
         self.defaults = defaults
         self.authenticateOwner = authenticateOwner
@@ -79,14 +88,14 @@ final class AppModel: ObservableObject {
             snapshot = DemoContent.snapshot()
             selectedID = snapshot.entries.first?.id
         } else {
-            let monitor = ClipboardMonitor(pasteboard: self.pasteboard)
+            let monitor = makeMonitor(self.pasteboard)
             self.monitor = monitor
             monitor.onCapture = { [weak self] entry in self?.capture(entry) }
             monitor.onRejection = { [weak self] reason in
                 if reason != .selfWrite { self?.skippedCount += 1 }
             }
             configureMonitor()
-            observeLocking()
+            observeSession(workspace: workspaceNotifications, screen: screenNotifications)
             maintenanceTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.prune() }
             }
@@ -109,6 +118,8 @@ final class AppModel: ObservableObject {
     }
 
     var selectedEntry: ClipEntry? { snapshot.entries.first { $0.id == selectedID } }
+    var isSessionSuspended: Bool { !sessionSuspensions.isEmpty }
+    var sessionEpoch: Int { lockEpoch }
     var scopeTitle: String {
         switch scope {
         case .all: "Clipboard"
@@ -432,8 +443,14 @@ final class AppModel: ObservableObject {
         prune()
     }
 
+    func setClearHistoryOnSessionLock(_ enabled: Bool) {
+        preferences.clearHistoryOnSessionLock = enabled
+        savePreferences()
+    }
+
     func applyStorage(_ mode: StorageMode, pinnedOnly: Bool, syncPassphrase: String = "") async {
         guard !isDemo, !isLocked, !isAuthenticating else { return }
+        let epoch = lockEpoch
         var next = preferences
         next.storageMode = mode
         next.persistPinnedOnly = pinnedOnly
@@ -461,7 +478,7 @@ final class AppModel: ObservableObject {
                 }
                 if key == nil {
                     try await authenticate()
-                    guard !isLocked else { return }
+                    guard !isLocked, lockEpoch == epoch else { return }
                     nextKey = try KeyStore().load(allowCreation: true)
                 }
                 guard let nextKey else { throw KeyStoreError.missing }
@@ -491,7 +508,7 @@ final class AppModel: ObservableObject {
     }
 
     func unlock(syncPassphrase: String = "") async {
-        guard isLocked, !isAuthenticating else { return }
+        guard isLocked, !isSessionSuspended, !isAuthenticating else { return }
         let epoch = lockEpoch
         do {
             if preferences.storageMode == .iCloud {
@@ -527,6 +544,7 @@ final class AppModel: ObservableObject {
 
     func lock() {
         guard !isDemo else { return }
+        resumeAfterSession = false
         lockEpoch += 1
         monitor?.stop()
         isCapturing = false
@@ -552,7 +570,12 @@ final class AppModel: ObservableObject {
     }
 
     func shutdown() {
+        resumeAfterSession = false
+        lockEpoch += 1
         monitor?.stop(); syncTimer?.invalidate(); maintenanceTimer?.invalidate()
+        isCapturing = false
+        for observer in observers { observer.center.removeObserver(observer.token) }
+        observers.removeAll()
         clearOwnedClipboard(); snapshot = VaultSnapshot(); key = nil; cloudVault = nil; syncState = SyncState()
         transfers.removeAll()
         PreviewCache.shared.removeAll()
@@ -611,17 +634,56 @@ final class AppModel: ObservableObject {
         nextSyncAttempt = ContinuousClock.now
     }
 
-    private func observeLocking() {
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.lock() }
-            })
+    private func suspendSession(for reason: SessionSuspension) {
+        let firstSuspension = sessionSuspensions.isEmpty
+        sessionSuspensions.insert(reason)
+        guard firstSuspension else { return }
+        let wasUnlocked = !isLocked
+        if wasUnlocked && preferences.clearHistoryOnSessionLock {
+            lock()
+            resumeAfterSession = preferences.storageMode == .memory
+            return
         }
-        observers.append(DistributedNotificationCenter.default().addObserver(
-            forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.lock() }
-            })
+        resumeAfterSession = wasUnlocked
+        lockEpoch += 1
+        monitor?.stop()
+        isCapturing = false
+        clearOwnedClipboard()
+        transfers.removeAll()
+        PreviewCache.shared.removeAll()
+        selectedID = nil
+        query = ""
+        isLocked = true
+    }
+
+    private func resumeSession(from reason: SessionSuspension) {
+        guard sessionSuspensions.remove(reason) != nil, sessionSuspensions.isEmpty else { return }
+        let shouldResume = resumeAfterSession
+        resumeAfterSession = false
+        guard shouldResume else { return }
+        isLocked = false
+        prune()
+        selectedID = snapshot.entries.first?.id
+        configureMonitor()
+    }
+
+    private func observeSession(workspace: NotificationCenter, screen: NotificationCenter) {
+        let pairs: [(NotificationCenter, Notification.Name, Notification.Name, SessionSuspension)] = [
+            (workspace, NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, .systemSleep),
+            (workspace, NSWorkspace.screensDidSleepNotification, NSWorkspace.screensDidWakeNotification, .displaySleep),
+            (workspace, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.sessionDidBecomeActiveNotification, .inactiveSession),
+            (screen, .init("com.apple.screenIsLocked"), .init("com.apple.screenIsUnlocked"), .screenLock)
+        ]
+        for (center, pause, resume, reason) in pairs {
+            let pauseObserver = center.addObserver(forName: pause, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.suspendSession(for: reason) }
+            }
+            let resumeObserver = center.addObserver(forName: resume, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resumeSession(from: reason) }
+            }
+            observers.append((center, pauseObserver))
+            observers.append((center, resumeObserver))
+        }
     }
 
     private func savePreferences() {

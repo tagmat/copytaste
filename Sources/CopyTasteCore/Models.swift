@@ -116,6 +116,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var selectorShortcut: SelectorShortcut = .shiftCommand
     public var imageTextSearch = false
     public var keepPinsPastExpiry = false
+    public var clearHistoryOnSessionLock = false
     public var retentionDays = 7
     public var maximumEntries = 300
     public var clearClipboardAfterSeconds = 45
@@ -128,7 +129,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, captureEnabled, captureImages, captureFiles, autoPaste, selectorLayout, retentionDays, maximumEntries
         case clearClipboardAfterSeconds, excludedBundleIDs, storageMode, persistPinnedOnly, customFolderPath
-        case selectorShortcut, imageTextSearch, keepPinsPastExpiry
+        case selectorShortcut, imageTextSearch, keepPinsPastExpiry, clearHistoryOnSessionLock
     }
 
     public init(from decoder: Decoder) throws {
@@ -144,6 +145,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         selectorShortcut = (try? values.decodeIfPresent(SelectorShortcut.self, forKey: .selectorShortcut)) ?? .shiftCommand
         imageTextSearch = (try? values.decodeIfPresent(Bool.self, forKey: .imageTextSearch)) ?? false
         keepPinsPastExpiry = (try? values.decodeIfPresent(Bool.self, forKey: .keepPinsPastExpiry)) ?? false
+        clearHistoryOnSessionLock = (try? values.decodeIfPresent(Bool.self, forKey: .clearHistoryOnSessionLock)) ?? false
         retentionDays = try values.decodeIfPresent(Int.self, forKey: .retentionDays) ?? 7
         maximumEntries = try values.decodeIfPresent(Int.self, forKey: .maximumEntries) ?? 300
         clearClipboardAfterSeconds = try values.decodeIfPresent(Int.self, forKey: .clearClipboardAfterSeconds) ?? 45

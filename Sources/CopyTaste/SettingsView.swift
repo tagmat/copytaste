@@ -90,6 +90,12 @@ struct SettingsView: View {
                         .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                     Toggle("Capture files", isOn: Binding(get: { model.preferences.captureFiles }, set: { model.setCaptureFiles($0) }))
                     Toggle("Paste on selection", isOn: Binding(get: { model.preferences.autoPaste }, set: { model.setAutoPaste($0) }))
+                    Toggle("Clear history when Mac locks or sleeps", isOn: Binding(
+                        get: { model.preferences.clearHistoryOnSessionLock },
+                        set: { model.setClearHistoryOnSessionLock($0) }))
+                        .disabled(model.isLocked)
+                    Text("When off, the session stays in memory and capture resumes when you return.")
+                        .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                     PermissionStatusView(isDemo: model.isDemo)
                     Text("Image pixels are preferred over accompanying links. Files are limited to 8 MB; folders, multiple-file copies, credential vaults and key files are skipped. Image and binary file content is not scanned for every possible secret. Source attribution is best effort.")
                         .font(.system(size: 11)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)

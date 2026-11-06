@@ -1,5 +1,7 @@
 # Validation — 4 November 2026
 
+On 6 November 2026, CopyTaste 0.4.2 passed 97 tests. New regressions post lock, unlock, sleep, wake and session-switch messages through isolated notification centers. They verify retained RAM history, new capture after resume, skipped suspended-period copies, overlapping and repeated events, manual pause and lock, optional clearing, saved-vault protection and cancellation of a paste interrupted by a complete lock/unlock cycle. Pending iCloud edits also survive default suspension in an isolated file fixture. The physical Mac lock and wake sequence remains a manual check.
+
 CopyTaste 0.3 was validated locally using macOS 26.3.1, Xcode 26.5 and Swift 6.3.2 on Apple Silicon.
 
 For CopyTaste 0.4, 89 tests passed in the same environment. Added coverage verifies hex expansion and alpha, color filtering, atomic folder creation with clip movement, folder removal without deleting clips, and deterministic rename merging with legacy snapshots. The README color example was rendered from the native swatch component with synthetic values. Live folder interactions and cross-device delivery remain manual checks.
