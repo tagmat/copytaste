@@ -21,7 +21,7 @@ struct CopyTasteApp: App {
 }
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
-    let model = AppModel(demo: CommandLine.arguments.contains("--demo") || Bundle.main.object(forInfoDictionaryKey: "CopyTastePreviewMode") as? Bool == true)
+    let model: AppModel
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var hotKey: EventHotKeyRef?
@@ -33,6 +33,13 @@ struct CopyTasteApp: App {
     private var activationObserver: NSObjectProtocol?
     private var modelChanges: AnyCancellable?
     private var lastDestination: PasteDestination?
+
+    override init() {
+        let demo = CommandLine.arguments.contains("--demo") ||
+            Bundle.main.object(forInfoDictionaryKey: "CopyTastePreviewMode") as? Bool == true
+        model = AppModel(demo: demo)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)

@@ -1,5 +1,7 @@
 # CopyTaste
 
+[![macOS checks](https://github.com/tagmat/copytaste/actions/workflows/ci.yml/badge.svg)](https://github.com/tagmat/copytaste/actions/workflows/ci.yml)
+
 **CopyTaste by tagmat** is a native, open source clipboard utility for macOS. It lives in the menu bar. Press **⇧⌘V** and your clips spread into a floating card orbit: search, move through the cards, pin a favourite and paste it into the app you came from.
 
 [Source](https://github.com/tagmat/copytaste) · [Report a vulnerability privately](https://github.com/tagmat/copytaste/security/advisories/new)

@@ -30,7 +30,7 @@ The pre-publication reviews were checked against the source. Confirmed safety, d
 | Repeated selector work | Matching results refresh only when history/query/filter/layout/OCR inputs change. | Source inspection plus search/filter tests. |
 | Stale transfers after a crash | Startup removes only expired, owned 0700 UUID transfer directories. | Ownership/age constraints in the cleanup path; no global sweep of current transfers. |
 | Stale distribution files | Replace the generated app bundle and verify a clean ZIP extraction. | Universal build, signature and executable-bit checks. |
-| CI and publication | Pinned action SHAs, warnings-as-errors, secret scanning, sandbox-reader test and ZIP artifact upload. Local credentials/tool state are ignored. | Local equivalents of all CI commands. Remote CI awaits publication. |
+| CI and publication | Pinned action SHAs, warnings-as-errors, secret scanning, sandbox-reader test and ZIP artifact upload. Local credentials/tool state are ignored. | Local equivalents of all CI commands and the [macOS workflow](https://github.com/tagmat/copytaste/actions/workflows/ci.yml). |
 | Documentation drift | Requirements, version, retention scope, recovery and binary-distribution limits are aligned. README screenshots and MIT LICENSE are retained. | Relative-link/metadata checks. |
 | Editor close crash found in native preview | Replace force-unwrapped optional SwiftUI bindings with safe bindings that remain valid during dismissal. | Native follow-up successfully created and saved a pinned snippet with a year title; durable UI automation is tracked in TODO. |
 
