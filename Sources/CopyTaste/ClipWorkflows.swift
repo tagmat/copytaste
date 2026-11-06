@@ -37,6 +37,8 @@ struct ClipEditor: View {
                     .accessibilityLabel("Clip text")
                     .focused($focusedField, equals: .body)
             }
+            Text("Snippets start pinned. Retention still applies unless Keep pins past expiry is enabled.")
+                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
             if let error { Text(error).font(.system(size: 11)).foregroundStyle(Palette.violet) }
             HStack {
                 Spacer()

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Carbon
+import Combine
 import CopyTasteCore
 
 @main
@@ -30,6 +31,7 @@ struct CopyTasteApp: App {
     private var sampleModel: AppModel?
     private var settingsController: NSWindowController?
     private var activationObserver: NSObjectProtocol?
+    private var modelChanges: AnyCancellable?
     private var lastDestination: PasteDestination?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -44,6 +46,10 @@ struct CopyTasteApp: App {
         item.button?.target = self
         item.button?.action = #selector(statusClicked)
         statusItem = item
+        modelChanges = model.objectWillChange.sink { [weak self] _ in
+            Task { @MainActor [weak self] in self?.updateStatusIcon() }
+        }
+        updateStatusIcon()
         popover.behavior = .transient
         popover.appearance = NSAppearance(named: .darkAqua)
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -87,6 +93,30 @@ struct CopyTasteApp: App {
         if let hotKey { UnregisterEventHotKey(hotKey) }
         hotKey = registration
         return true
+    }
+
+    private func updateStatusIcon() {
+        let symbol = model.errorMessage != nil || model.syncIssue != nil ? "exclamationmark.triangle" :
+            (model.isLocked ? "lock.shield" : (model.isCapturing ? "square.on.square" : "pause.circle"))
+        let state = model.isLocked ? "Locked" : (model.isCapturing ? "Capture on" : "Capture paused")
+        statusItem?.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "CopyTaste · " + state)
+        statusItem?.button?.toolTip = "CopyTaste · " + state
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard model.hasUnsavedChanges else { return .terminateNow }
+        Task { @MainActor in
+            _ = await model.flushStorage()
+            if model.hasUnsavedChanges {
+                let alert = NSAlert()
+                alert.messageText = "Changes are still waiting to be saved"
+                alert.informativeText = "Keep CopyTaste open to retry, or quit and discard changes that could not be saved."
+                alert.addButton(withTitle: "Keep Open")
+                alert.addButton(withTitle: "Discard and Quit")
+                sender.reply(toApplicationShouldTerminate: alert.runModal() == .alertSecondButtonReturn)
+            } else { sender.reply(toApplicationShouldTerminate: true) }
+        }
+        return .terminateLater
     }
 
     private func rememberDestination() {

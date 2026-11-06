@@ -6,6 +6,23 @@ final class TransferFileStore {
     private var folders: [UUID: URL] = [:]
     private var cleanup: [UUID: Task<Void, Never>] = [:]
 
+    init() { Self.removeExpiredTransfers() }
+
+    static func removeExpiredTransfers(now: Date = Date(), directory: URL = FileManager.default.temporaryDirectory) {
+        let manager = FileManager.default
+        guard let candidates = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey, .isSymbolicLinkKey, .isDirectoryKey]) else { return }
+        for candidate in candidates where candidate.lastPathComponent.hasPrefix("copytaste-transfer-") {
+            guard UUID(uuidString: String(candidate.lastPathComponent.dropFirst("copytaste-transfer-".count))) != nil,
+                  let info = try? candidate.resourceValues(forKeys: [.creationDateKey, .isSymbolicLinkKey, .isDirectoryKey]),
+                  info.isSymbolicLink != true, info.isDirectory == true,
+                  let created = info.creationDate, now.timeIntervalSince(created) >= 300,
+                  let attributes = try? manager.attributesOfItem(atPath: candidate.path),
+                  (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == getuid(),
+                  (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700 else { continue }
+            try? manager.removeItem(at: candidate)
+        }
+    }
+
     func materialize(_ entry: ClipEntry) throws -> URL {
         guard entry.kind == .file, let data = entry.fileData, data.count <= CapturePolicy.maxFileBytes,
               let original = entry.fileName, !CapturePolicy.isProtectedFileName(original) else { throw VaultError.unsafePath }

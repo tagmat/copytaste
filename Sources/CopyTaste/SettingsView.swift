@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var pinnedOnly = false
     @State private var syncPassphrase = ""
     @State private var newFolder = ""
+    @State private var confirmCompaction = false
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -34,18 +35,22 @@ struct SettingsView: View {
                         Text("Encrypted in a folder").tag(StorageMode.encryptedFolder)
                         Text("iCloud Drive · encrypted sync").tag(StorageMode.iCloud)
                     }
-                    Text(storage == .memory ? "History lives in memory and is released on lock or quit. File paste creates a private temporary transfer file for up to five minutes; lock and quit remove it sooner." : "History is encrypted before it is written. Pinned items still obey retention limits.")
+                    Text(storage == .memory ? "History lives in memory and is released on manual app lock or quit. File paste creates a private temporary transfer file for up to five minutes; lock and quit remove it sooner." : "History is encrypted before it is written. Pins obey retention unless Keep pins past expiry is enabled; count and byte limits always apply.")
                         .font(.system(size: 11)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
                     if storage == .iCloud {
                         SecureField("Sync passphrase · 16+ characters", text: $syncPassphrase).textFieldStyle(.roundedBorder)
                         Text("Use the same phrase on every Mac. It is never saved and cannot be recovered. Leaving sync keeps the shared encrypted file in iCloud.")
                             .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                         if model.preferences.storageMode == .iCloud && !model.isLocked {
+                            Button("Compact Sync History…") { confirmCompaction = true }
+                                .disabled(model.isAuthenticating)
+                            Text("Archives encrypted history and starts a fresh sync generation. Other Macs must lock and reopen sync before editing.")
+                                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                             HStack {
                                 if let date = model.lastSyncAt {
                                     Text("Last local merge: \(date.formatted(date: .omitted, time: .shortened))").foregroundStyle(Palette.secondary)
                                 }
-                                Spacer(); Button("Sync Now") { model.syncNow(userInitiated: true) }
+                                Spacer(); Button("Sync Now") { Task { await model.syncNow(userInitiated: true) } }
                             }
                             if let issue = model.syncIssue {
                                 Text("Sync will retry. \(issue)").font(.system(size: 11)).foregroundStyle(Palette.violet)
@@ -80,7 +85,7 @@ struct SettingsView: View {
                     }
                     Toggle("Keep pins past expiry", isOn: Binding(get: { model.preferences.keepPinsPastExpiry }, set: { model.setKeepPinsPastExpiry($0) }))
                         .disabled(model.isLocked)
-                    Text("Pins count toward the history limits. With iCloud, use the same retention settings on all Macs.")
+                    Text("Pins count toward the history limits. iCloud keeps a bounded shared library. Retention and app exclusions filter this Mac; Delete and Clear History remove clips on every Mac.")
                         .font(.system(size: 11)).foregroundStyle(Palette.secondary)
                 }
                 section("Privacy & capture", symbol: "shield.lefthalf.filled") {
@@ -145,7 +150,7 @@ struct SettingsView: View {
                         }
                     Text("Return pastes · Option-Return copies · ⌘1–9 quick paste · ⌘E edits · ⌘B adds to batch")
                         .foregroundStyle(Palette.secondary)
-                    Text("CopyTaste \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0") · by tagmat · MIT License")
+                    Text("CopyTaste \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0") · by tagmat · MIT License")
                         .font(.system(size: 10)).foregroundStyle(Palette.secondary)
                 }
             }.padding(30)
@@ -154,6 +159,12 @@ struct SettingsView: View {
             .onAppear { storage = model.preferences.storageMode; pinnedOnly = model.preferences.persistPinnedOnly }
             .onChange(of: storage) { _, mode in if mode == .iCloud { pinnedOnly = false } }
             .onChange(of: model.preferences.storageMode) { _, mode in storage = mode }
+            .alert("Compact shared sync history?", isPresented: $confirmCompaction) {
+                Button("Cancel", role: .cancel) { }
+                Button("Archive and Compact") { Task { await model.compactSyncHistory() } }
+            } message: {
+                Text("An encrypted recovery archive will be kept in the sync folder. Reopen sync on all other Macs afterward. Unsynced changes on other Macs must be merged first.")
+            }
             .alert("CopyTaste", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
                 Button("OK") { model.errorMessage = nil }
             } message: { Text(model.errorMessage ?? "") }

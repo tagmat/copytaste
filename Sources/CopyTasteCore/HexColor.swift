@@ -13,6 +13,7 @@ public struct HexColor: Equatable, Sendable {
         let digits = prefixed ? value.dropFirst() : value[...]
         let count = digits.utf8.count
         guard count == 6 || (prefixed && [3, 4, 8].contains(count)),
+              prefixed || digits.utf8.contains(where: { (48...57).contains($0) }),
               digits.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }),
               let code = UInt32(digits, radix: 16) else { return nil }
         let shorthand = count <= 4

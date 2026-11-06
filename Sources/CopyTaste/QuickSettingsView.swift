@@ -61,7 +61,7 @@ struct QuickSettingsView: View {
                     Image(systemName: model.preferences.storageMode == .memory ? "memorychip" : "lock.icloud")
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.storageLabel).font(.system(size: 12, weight: .medium))
-                        Text(model.hasPendingSync ? "Changes waiting in memory" : (model.syncIssue == nil ? "Storage & sync" : "Sync will retry"))
+                        Text(model.hasPendingLocalSave ? "Saving encrypted history…" : (model.hasPendingSync ? "Changes waiting in memory" : (model.syncIssue == nil ? "Storage & sync" : "Sync will retry")))
                             .font(.system(size: 10)).foregroundStyle(Palette.secondary)
                     }
                     Spacer(); Image(systemName: "chevron.right").font(.system(size: 10))
@@ -73,7 +73,7 @@ struct QuickSettingsView: View {
                 Button("Try sample clips", action: onSamples).buttonStyle(.plain).foregroundStyle(Palette.secondary)
                 Spacer()
                 Menu {
-                    Button("Lock & Clear Memory") { model.lock(); PreviewCache.shared.removeAll() }
+                    Button("Lock & Clear Memory") { model.requestLock(); PreviewCache.shared.removeAll() }
                     Button("Clear History…", role: .destructive) { confirmClear = true }.disabled(model.isLocked)
                     Divider()
                     Button("Quit CopyTaste") { NSApp.terminate(nil) }

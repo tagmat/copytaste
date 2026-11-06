@@ -4,9 +4,9 @@ CopyTaste is a Swift 6 package with no external dependencies. `CopyTasteCore` ow
 
 ## Capture
 
-`ClipboardMonitor` polls the change count every 400 ms only while enabled and unlocked. Starting/resuming skips the existing clipboard. Source application, all advertised private markers, secure input and transition timing are checked before payload access. Changed source or clipboard state after reading discards the result.
+`ClipboardMonitor` polls the change count every 150 ms only while enabled and unlocked. Starting/resuming skips the existing clipboard. Source application, all advertised private markers, secure input and transition timing are checked before payload access. Changed source or clipboard state after reading discards the result.
 
-A single regular file URL is handled through size, symlink, credential-name and text-content filters. Otherwise image bytes take priority over an accompanying URL/string. Supported bitmaps are dimension-checked before decoding and normalised to PNG. Plain strings and URL-only representations are classified last. The app never downloads an image merely because its URL was copied.
+Image bytes take priority over accompanying file URLs, links or strings. Otherwise a single regular file URL is handled through size, symlink, credential-name and text-content filters. Payload reads from AppKit stay on the main actor; file I/O, ImageIO normalisation and fingerprint creation run off actor and the result is revalidated against the change count, source, secure input and monitor generation. Supported bitmaps are dimension-checked before decoding and normalised to PNG. Plain strings and URL-only representations are classified last. The app never downloads an image merely because its URL was copied.
 
 Entries deduplicate by content fingerprint, including file bytes and filename, then obey age/count/byte limits. Search includes filenames. `Preferences` uses compatible decoding with explicit 0.2 image-default migration; subsequent opt-outs persist.
 
@@ -32,10 +32,23 @@ File paste materialises a unique mode-0700 directory and mode-0600 file through 
 
 Memory mode never invokes a history file or key adapter. Local vaults encrypt the complete snapshot with AES-256-GCM before atomic writes; their non-synchronising key uses Security.framework. LocalAuthentication gates reopening saved history.
 
-Optional iCloud Drive sync uses a separate passphrase-derived portable key, coordinated file access, version-conflict merging, modification timestamps, deletion fingerprints and a clear boundary. The original phrase material is held only while unlocked to derive keys for independently initialised salts. File entries require 0.2-capable peers. The cloud path is the user's already-enabled iCloud Drive directory, not a custom server.
+Optional iCloud Drive sync uses a separate passphrase-derived portable key, coordinated file access, version-conflict merging, modification timestamps, deletion fingerprints and a clear boundary. The original phrase material is held only while unlocked to derive keys for independently initialised salts. Shared vaults require 0.5-capable peers after format migration. The cloud path is the user's already-enabled iCloud Drive directory, not a custom server.
 
-In sync mode, the model stages accepted mutations in its current in-memory snapshot and keeps their tombstones until exchange succeeds. Failures leave the state visible, record the reason and schedule a bounded retry. A successful local merge clears the pending status. Reopening requires the existing vault. Only explicit setup may create one.
+In sync mode, the model stages accepted mutations in its in-memory shared state. Explicit deletion evidence persists across successful exchanges until safely compacted. Failures leave the state visible, record the reason and schedule a bounded retry. A successful local merge clears the pending status. Reopening requires the existing vault. Only explicit setup may create one.
 
 Session lock, display sleep, system sleep and inactive-session signals are paired with their resume notifications. A set tracks overlapping suspensions. The model stops capture, clears owned clipboard output and temporary transfers, purges preview caches and hides history while retaining the session by default. Resume waits for every observed reason to end and restores the Capture preference. Monitor restart skips the existing clipboard.
 
 Manual app lock always releases history and key material. Optional clearing on session suspension uses the same release path. Saved vaults then require authentication, while memory capture may restart after wake with an empty history. UserDefaults stores preferences only. Epoch checks cancel authentication and paste work across a suspension. See [security](../SECURITY.md) for limits and [testing](TESTING.md) for evidence.
+
+
+## Publication hardening (0.5)
+
+`VaultWorker` serialises encrypted file I/O, KDF and shared exchanges away from `AppModel`’s main actor. Local writes coalesce for 350 ms, carry a revision/lock epoch and leave pending state visible until completion. A change arriving during an exchange is merged with the returned state rather than overwritten. Storage transitions suppress queued writes, preserve preference changes made during authentication, and flush the new storage pointer before deleting the old file. Normal quit flushes pending work and requires an explicit discard if saving fails.
+
+`ClipEntry` computes SHA-256 once on construction/decoding and refreshes the cached value only on content changes. The cache is not serialised, preserving local snapshot compatibility. Picker matching results are cached as view state and refreshed on history, search, type, folder, layout or OCR changes. Preview rendering uses background tasks; generation checks prevent completed work repopulating a purged cache.
+
+The shared sync snapshot is separate from each Mac’s visible projection. Local retention/exclusions never create tombstones. Only explicit deletion/body replacement does; Clear History removes evidence already covered by its boundary. The hard shared library is 1,000 entries/24 MiB/30 days for unpinned clips. Pin prioritisation applies within capacity. Maintenance writes an encrypted archive before changing the sync generation; stale peers must reopen. No unsafe TTL discards deletion evidence for offline pinned clips.
+
+The `CTSYNC02` reader accepts and upgrades `CTSYNC01`, normalises phrases to NFC and supports old raw/decomposed phrases during migration. File writes use owner-only permissions. Foreign salts are cached in a bounded, synchronised cache and writes adopt the current shared salt. Resolved conflict versions are individually removed after successful persistence.
+
+File output delegates to AppKit’s native NSURL pasteboard implementation and adds private/origin representations. A separate signed App Sandbox reader test verifies direct path access is denied while pasteboard-mediated access succeeds. Expired transfer cleanup validates ownership, permissions, UUID name and age.

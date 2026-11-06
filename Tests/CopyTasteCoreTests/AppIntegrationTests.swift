@@ -22,7 +22,7 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertFalse(model.isLocked)
         let valid = try Data(contentsOf: url)
         try Data("damaged synthetic fixture".utf8).write(to: url)
-        model.syncNow(userInitiated: true)
+        await model.syncNow(userInitiated: true)
         XCTAssertNotNil(model.errorMessage)
         try valid.write(to: url)
         model.lock()
@@ -31,7 +31,7 @@ final class AppIntegrationTests: XCTestCase {
         let peer = try CloudVault.connect(url: url, passphrase: phrase)
         let clip = ClipEntry(kind: .text, text: "A synthetic recovery note", sourceName: "Fixture", sourceBundleID: "org.example.editor")
         _ = try peer.exchange(SyncState(snapshot: VaultSnapshot(entries: [clip])), preferences: preferences)
-        model.syncNow() // The regular timer path must no longer be suspended.
+        await model.syncNow() // The regular timer path must no longer be suspended.
         XCTAssertTrue(model.snapshot.entries.contains { $0.id == clip.id })
         model.shutdown()
     }
@@ -64,6 +64,7 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertNil(model.saveClip(id: old.id, title: "Edited", text: "New synthetic clip"))
         XCTAssertEqual(model.snapshot.entries.map(\.text), ["New synthetic clip"])
         XCTAssertTrue(model.hasPendingSync)
+        await model.syncNow(userInitiated: true)
         XCTAssertNotNil(model.syncIssue)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
         screen.post(name: .init("com.apple.screenIsLocked"), object: nil)
@@ -75,7 +76,7 @@ final class AppIntegrationTests: XCTestCase {
         XCTAssertTrue(model.hasPendingSync)
 
         try FileManager.default.moveItem(at: offline, to: url)
-        model.syncNow(userInitiated: true)
+        await model.syncNow(userInitiated: true)
         XCTAssertFalse(model.hasPendingSync)
         XCTAssertNil(model.syncIssue)
         let result = try vault.exchange(stale, preferences: preferences)
@@ -141,9 +142,9 @@ final class AppIntegrationTests: XCTestCase {
         try model.saveFolder(name: "Research")
         let collection = try XCTUnwrap(model.snapshot.collections.first { $0.name == "Research" })
         model.move(entry, to: collection.id)
-        XCTAssertEqual(model.visibleEntries.count, 1)
-        model.query = "good ideas"
-        XCTAssertEqual(model.visibleEntries.first?.id, entry.id)
+        let filed = model.snapshot.entries.filter { $0.collectionID == collection.id }
+        XCTAssertEqual(filed.count, 1)
+        XCTAssertEqual(History.search(filed, query: "good ideas").first?.id, entry.id)
         model.deleteCollection(collection.id)
         XCTAssertNil(model.snapshot.entries.first { $0.id == entry.id }?.collectionID)
         XCTAssertNotNil(model.snapshot.entries.first { $0.id == entry.id })

@@ -28,15 +28,17 @@ public enum History {
         var result = snapshot
         let cutoff = now.addingTimeInterval(-Double(max(1, preferences.retentionDays)) * 86_400)
         result.entries.removeAll { $0.createdAt < cutoff && !(preferences.keepPinsPastExpiry && $0.isPinned) }
-        result.entries.sort { $0.createdAt > $1.createdAt }
+        result.entries.sort { $0.createdAt == $1.createdAt ? $0.id.uuidString > $1.id.uuidString : $0.createdAt > $1.createdAt }
         let limit = min(1_000, max(1, preferences.maximumEntries))
         if preferences.keepPinsPastExpiry {
             let prioritized = result.entries.filter(\.isPinned) + result.entries.filter { !$0.isPinned }
             var remaining = maximumVaultBytes
             var kept: Set<UUID> = []
+            var droppedPin = false
             for entry in prioritized where kept.count < limit {
+                if !entry.isPinned && droppedPin { continue }
                 let bytes = entry.byteCount
-                guard bytes <= remaining else { continue }
+                guard bytes <= remaining else { droppedPin = droppedPin || entry.isPinned; continue }
                 kept.insert(entry.id)
                 remaining -= bytes
             }

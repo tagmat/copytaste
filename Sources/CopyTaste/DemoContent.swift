@@ -21,7 +21,6 @@ enum DemoContent {
         ]
         entries.append(ClipEntry(kind: .file, fileData: Data("# Notes in motion\n\n**Local** by default.\n\n```swift\nlet orbit = [\"ideas\", \"images\"]\nreturn orbit.first\n```\n".utf8), fileName: "Release notes.md", sourceName: "Finder", sourceBundleID: "com.apple.finder", createdAt: now.addingTimeInterval(-3_800)))
         entries.append(ClipEntry(kind: .file, fileData: samplePDF(), fileName: "Project notes.pdf", sourceName: "Finder", sourceBundleID: "com.apple.finder", createdAt: now.addingTimeInterval(-4_000)))
-        entries[0].lastUsedAt = now
         return VaultSnapshot(entries: entries, collections: [collection, paletteFolder])
     }
 

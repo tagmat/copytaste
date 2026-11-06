@@ -2,12 +2,8 @@ import AppKit
 import Combine
 import CryptoKit
 import LocalAuthentication
-import ServiceManagement
+import Carbon
 import CopyTasteCore
-
-enum HistoryScope: Hashable {
-    case all, pinned, kind(ClipKind), collection(UUID)
-}
 
 private enum FolderError: LocalizedError {
     case locked, invalidName, duplicateName, limit, missingFolder, missingClip, saveFailed
@@ -36,16 +32,20 @@ final class AppModel: ObservableObject {
     @Published private(set) var isLocked = false
     @Published private(set) var isCapturing = false
     @Published private(set) var skippedCount = 0
-    @Published var scope: HistoryScope = .all
-    @Published var query = ""
     @Published var selectedID: UUID?
     @Published var errorMessage: String?
     @Published var toast: String?
     @Published var isAuthenticating = false
-    @Published var showSettings = false
     @Published private(set) var lastSyncAt: Date?
     @Published private(set) var syncIssue: String?
     @Published private(set) var hasPendingSync = false
+    @Published private(set) var hasPendingLocalSave = false
+    @Published private(set) var lastCaptureIssue: String?
+    private let worker = VaultWorker()
+    private var storageTask: Task<Void, Never>?
+    private var runningSync: Task<Void, Never>?
+    private var revision = 0
+    private var storageTransition = false
     let isDemo: Bool
     private var key: SymmetricKey?
     private var monitor: ClipboardMonitor?
@@ -67,10 +67,17 @@ final class AppModel: ObservableObject {
     private let pasteboard: NSPasteboard
     private let authenticateOwner: () async throws -> Void
     private let cloudLocation: () throws -> URL
+    private let localLocation: () -> URL
+    private let loadKey: (Bool) throws -> SymmetricKey
+    private let sessionIsActive: @MainActor () -> Bool
 
     init(demo: Bool = false, defaults: UserDefaults = .standard, pasteboard: NSPasteboard? = nil,
          authenticateOwner: @escaping () async throws -> Void = DeviceAuthentication.authenticate,
          cloudLocation: @escaping () throws -> URL = CloudVault.iCloudURL,
+         localLocation: @escaping () -> URL = { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("net.tagmat.copytaste", isDirectory: true).appendingPathComponent("history.vault") },
+         loadKey: @escaping (Bool) throws -> SymmetricKey = { try KeyStore().load(allowCreation: $0, context: DeviceAuthentication.context) },
+         sessionIsActive: @escaping @MainActor () -> Bool = SessionState.isActive,
          workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
          screenNotifications: NotificationCenter = DistributedNotificationCenter.default(),
          makeMonitor: (NSPasteboard) -> ClipboardMonitor = { ClipboardMonitor(pasteboard: $0) }) {
@@ -78,11 +85,23 @@ final class AppModel: ObservableObject {
         self.defaults = defaults
         self.authenticateOwner = authenticateOwner
         self.cloudLocation = cloudLocation
+        self.localLocation = localLocation
+        self.loadKey = loadKey
+        self.sessionIsActive = sessionIsActive
         self.pasteboard = pasteboard ?? (demo ? NSPasteboard(name: .init("net.tagmat.copytaste.demo." + UUID().uuidString)) : .general)
-        if !demo, let data = defaults.data(forKey: "preferences.v1"),
-           let saved = try? JSONDecoder().decode(Preferences.self, from: data) {
-            preferences = saved
-        } else { preferences = Preferences() }
+        preferences = Preferences()
+        if !demo, let data = defaults.data(forKey: "preferences.v1") {
+            do {
+                preferences = try JSONDecoder().decode(Preferences.self, from: data)
+                if !preferences.recoveryWarnings.isEmpty {
+                    defaults.set(data, forKey: "preferences.recovery.v1")
+                    errorMessage = "Some settings could not be read. Capture is paused. Review storage and app exclusions before enabling capture. The original settings were preserved for recovery."
+                }
+            } catch {
+                defaults.set(data, forKey: "preferences.recovery.v1")
+                errorMessage = "Settings could not be read. Capture is off and the original settings were preserved for recovery. Saved vault files have not been changed."
+            }
+        }
         isLocked = preferences.storageMode != .memory
         if demo {
             snapshot = DemoContent.snapshot()
@@ -92,7 +111,10 @@ final class AppModel: ObservableObject {
             self.monitor = monitor
             monitor.onCapture = { [weak self] entry in self?.capture(entry) }
             monitor.onRejection = { [weak self] reason in
-                if reason != .selfWrite { self?.skippedCount += 1 }
+                if reason != .selfWrite {
+                    self?.skippedCount += 1
+                    self?.lastCaptureIssue = reason.captureMessage
+                }
             }
             configureMonitor()
             observeSession(workspace: workspaceNotifications, screen: screenNotifications)
@@ -100,37 +122,15 @@ final class AppModel: ObservableObject {
                 Task { @MainActor [weak self] in self?.prune() }
             }
             syncTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.syncNow() }
+                Task { @MainActor [weak self] in await self?.syncNow() }
             }
         }
-    }
-
-    var visibleEntries: [ClipEntry] {
-        let scoped = snapshot.entries.filter { entry in
-            switch scope {
-            case .all: true
-            case .pinned: entry.isPinned
-            case .kind(let kind): entry.kind == kind
-            case .collection(let id): entry.collectionID == id
-            }
-        }
-        return History.search(scoped, query: query)
     }
 
     var selectedEntry: ClipEntry? { snapshot.entries.first { $0.id == selectedID } }
     var isSessionSuspended: Bool { !sessionSuspensions.isEmpty }
     var sessionEpoch: Int { lockEpoch }
-    var scopeTitle: String {
-        switch scope {
-        case .all: "Clipboard"
-        case .pinned: "Pinned"
-        case .kind(.text): "Text"
-        case .kind(.link): "Links"
-        case .kind(.image): "Images"
-        case .kind(.file): "Files"
-        case .collection(let id): snapshot.collections.first { $0.id == id }?.name ?? "Collection"
-        }
-    }
+    var hasUnsavedChanges: Bool { hasPendingSync || hasPendingLocalSave }
     var storageLabel: String {
         switch preferences.storageMode {
         case .memory: "Memory only"
@@ -146,8 +146,7 @@ final class AppModel: ObservableObject {
         case .memory: return nil
         case .iCloud: return nil
         case .encryptedLocal:
-            return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("net.tagmat.copytaste", isDirectory: true).appendingPathComponent("history.vault")
+            return localLocation()
         case .encryptedFolder:
             return settings.customFolderPath.map { URL(fileURLWithPath: $0, isDirectory: true)
                 .appendingPathComponent("CopyTaste", isDirectory: true).appendingPathComponent("history.vault") }
@@ -160,31 +159,60 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    @discardableResult private func commit(_ state: VaultSnapshot, clearAll: Bool = false) -> Bool {
+    @discardableResult private func commit(_ state: VaultSnapshot, clearAll: Bool = false,
+                                           explicitDeletion: Bool = false) -> Bool {
         guard !isLocked else { return false }
+        guard clearAll || state != snapshot else { return true }
         if preferences.storageMode == .iCloud {
-            guard clearAll || state != snapshot else { return true }
             var pending = syncState
-            if clearAll { pending.clearedAt = Date() }
-            pending.recordChanges(from: snapshot, to: state)
+            pending.applyLocalChanges(from: snapshot, to: state, explicitDeletion: explicitDeletion, clearAll: clearAll)
             guard pending.deletionLogWithinLimits else {
-                storageFailed(CloudVaultError.tooManyDeletes)
+                errorMessage = CloudVaultError.tooManyDeletes.localizedDescription
                 return false
             }
             syncState = pending
-            snapshot = state
             hasPendingSync = true
-            syncNow()
-            return true
+        } else if vaultURL != nil {
+            guard key != nil else { storageFailed(KeyStoreError.missing); return false }
+            hasPendingLocalSave = true
         }
+        snapshot = state
+        revision += 1
+        schedulePersistence()
+        return true
+    }
+
+    private func schedulePersistence() {
+        storageTask?.cancel()
+        guard hasUnsavedChanges, !isLocked, !storageTransition else { return }
+        storageTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) }
+            catch { return }
+            guard let self, !Task.isCancelled else { return }
+            if self.preferences.storageMode == .iCloud { await self.syncNow() }
+            else { _ = await self.flushStorage() }
+        }
+    }
+
+    @discardableResult func flushStorage() async -> Bool {
+        guard !isLocked else { return !hasUnsavedChanges }
+        if preferences.storageMode == .iCloud {
+            await syncNow(userInitiated: true)
+            return !hasPendingSync
+        }
+        guard hasPendingLocalSave, let url = vaultURL, let key else { return !hasPendingLocalSave }
+        let epoch = lockEpoch
+        let version = revision
+        let state = archived(snapshot, settings: preferences)
         do {
-            if let url = vaultURL {
-                guard let key else { throw KeyStoreError.missing }
-                try EncryptedVault(url: url).save(archived(state, settings: preferences), key: key)
-            }
-            snapshot = state
-            return true
-        } catch {
+            try await worker.save(state, to: url, key: key)
+            guard lockEpoch == epoch, !isLocked else { return false }
+            if revision == version { hasPendingLocalSave = false }
+            else { schedulePersistence() }
+            return !hasPendingLocalSave
+        } catch is CancellationError { return false }
+        catch {
+            guard lockEpoch == epoch else { return false }
             storageFailed(error)
             return false
         }
@@ -206,7 +234,7 @@ final class AppModel: ObservableObject {
 
     func prune() {
         guard !isLocked else { return }
-        let updated = History.pruned(snapshot, preferences: preferences)
+        let updated = preferences.storageMode == .iCloud ? CloudVault.visibleSnapshot(syncState.snapshot, preferences: preferences) : History.pruned(snapshot, preferences: preferences)
         if updated != snapshot { commit(updated) }
     }
 
@@ -221,7 +249,7 @@ final class AppModel: ObservableObject {
         monitor?.policy = CapturePolicy(excludedBundleIDs: preferences.excludedBundleIDs)
         monitor?.captureImages = preferences.captureImages
         monitor?.captureFiles = preferences.captureFiles
-        isCapturing = preferences.captureEnabled && !isLocked && !isDemo
+        isCapturing = preferences.captureEnabled && !isLocked && !isSessionSuspended && !isDemo
         if isCapturing { monitor?.start() } else { monitor?.stop() }
     }
 
@@ -230,15 +258,16 @@ final class AppModel: ObservableObject {
         let item = NSPasteboardItem()
         item.setString("CopyTaste", forType: .init("net.tagmat.copytaste.origin"))
         item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
+        var writer: any NSPasteboardWriting = item
         if entry.kind == .file {
-            do { item.setString(try transfers.materialize(entry).absoluteString, forType: .fileURL) }
+            do { writer = FilePasteboardWriter(url: try transfers.materialize(entry)) }
             catch { errorMessage = "The file could not be prepared for pasting. \(error.localizedDescription)"; return false }
         } else if entry.kind == .image, let image = entry.imageData { item.setData(image, forType: .png) }
         else if let text = entry.text { item.setString(text, forType: .string) }
         else { return false }
         clearTask?.cancel()
         pasteboard.clearContents()
-        guard pasteboard.writeObjects([item]) else { errorMessage = "The clipboard could not be updated. Try again."; return false }
+        guard pasteboard.writeObjects([writer]) else { errorMessage = "The clipboard could not be updated. Try again."; return false }
         ownedClipboardCount = pasteboard.changeCount
         let expectedCount = pasteboard.changeCount
         let seconds = preferences.clearClipboardAfterSeconds
@@ -262,18 +291,20 @@ final class AppModel: ObservableObject {
         let policy = CapturePolicy()
         let label = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if label.count > 120 || label.utf8.count > 512 { return "Use a shorter title." }
-        if !label.isEmpty && policy.rejection(forText: label) != nil { return "The title may contain sensitive data." }
+        if !label.isEmpty && policy.rejection(forText: label, manual: true) != nil { return "The title may contain sensitive data." }
         var state = snapshot
         let now = Date()
         let index = id.flatMap { id in state.entries.firstIndex { $0.id == id } }
         if id != nil && index == nil { return "This clip is no longer in history." }
-        var entry = index.map { state.entries[$0] } ?? ClipEntry(kind: .text, sourceName: "Snippet", sourceBundleID: CapturePolicy.ownBundleID, createdAt: now)
+        var entry = index.map { state.entries[$0] } ?? ClipEntry(kind: .text, sourceName: "Snippet", sourceBundleID: CapturePolicy.ownBundleID, createdAt: now, isPinned: true)
         if entry.kind == .text || entry.kind == .link {
             guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Enter some text." }
             if text.utf8.count > CapturePolicy.maxTextBytes { return "Text exceeds the 512 KB limit." }
-            if policy.rejection(forText: text) != nil { return "The text may contain sensitive data." }
+            if policy.rejection(forText: text, manual: true) != nil { return "The text may contain sensitive data." }
             if text != entry.text {
                 entry.text = text
+                entry.sourceName = "Snippet"
+                entry.sourceBundleID = CapturePolicy.ownBundleID
                 entry.kind = CapturePolicy.kind(for: text)
                 entry.createdAt = now
                 let fingerprint = entry.fingerprint
@@ -290,7 +321,7 @@ final class AppModel: ObservableObject {
         else { state.entries.insert(entry, at: 0) }
         state = History.pruned(state, preferences: preferences)
         guard state.entries.contains(where: { $0.id == entry.id }) else { return "History is at its limit. Remove a clip or raise the limit." }
-        guard commit(state) else { return "The clip could not be saved." }
+        guard commit(state, explicitDeletion: id != nil) else { return "The clip could not be saved." }
         selectedID = entry.id
         return nil
     }
@@ -306,8 +337,8 @@ final class AppModel: ObservableObject {
     func delete(_ entry: ClipEntry) {
         var state = snapshot
         state.entries.removeAll { $0.id == entry.id }
-        commit(state)
-        if selectedID == entry.id { selectedID = visibleEntries.first?.id }
+        commit(state, explicitDeletion: true)
+        if selectedID == entry.id { selectedID = snapshot.entries.first?.id }
     }
 
     func clearHistory() {
@@ -346,7 +377,6 @@ final class AppModel: ObservableObject {
             state.entries[index].modifiedAt = now
         }
         guard commit(state) else { throw FolderError.saveFailed }
-        if id == nil { scope = .collection(folderID) }
         return folderID
     }
 
@@ -360,7 +390,6 @@ final class AppModel: ObservableObject {
             state.entries[index].modifiedAt = now
         }
         guard commit(state) else { return false }
-        if scope == .collection(id) { scope = .all }
         return true
     }
 
@@ -394,13 +423,15 @@ final class AppModel: ObservableObject {
         // Remove previously captured content from a newly excluded app immediately.
         var state = snapshot
         state.entries.removeAll { $0.sourceBundleID.caseInsensitiveCompare(identifier) == .orderedSame }
-        commit(state)
+        if preferences.storageMode == .iCloud { snapshot = CloudVault.visibleSnapshot(syncState.snapshot, preferences: preferences) }
+        else { commit(state) }
         savePreferences()
         configureMonitor()
     }
 
     func removeExclusion(_ identifier: String) {
         preferences.excludedBundleIDs.remove(identifier)
+        if preferences.storageMode == .iCloud { snapshot = CloudVault.visibleSnapshot(syncState.snapshot, preferences: preferences) }
         savePreferences()
         configureMonitor()
     }
@@ -449,56 +480,66 @@ final class AppModel: ObservableObject {
     }
 
     func applyStorage(_ mode: StorageMode, pinnedOnly: Bool, syncPassphrase: String = "") async {
-        guard !isDemo, !isLocked, !isAuthenticating else { return }
+        guard !isDemo, !isLocked, !isAuthenticating, !storageTransition else { return }
+        if mode == .iCloud { await enableCloudSync(passphrase: syncPassphrase); return }
+        storageTransition = true
+        storageTask?.cancel()
+        await storageTask?.value
+        defer { storageTransition = false; schedulePersistence() }
         let epoch = lockEpoch
-        var next = preferences
-        next.storageMode = mode
-        next.persistPinnedOnly = pinnedOnly
-        if mode == .iCloud {
-            await enableCloudSync(passphrase: syncPassphrase)
-            return
-        }
-        if mode == .encryptedFolder && (preferences.storageMode != mode || preferences.customFolderPath == nil) {
+        let oldURL = vaultURL
+        var folderPath = preferences.customFolderPath
+        if mode == .encryptedFolder && (preferences.storageMode != mode || folderPath == nil) {
             let picker = NSOpenPanel()
             picker.title = "Choose a folder for the encrypted vault"
             picker.canChooseDirectories = true
             picker.canChooseFiles = false
             picker.canCreateDirectories = true
             guard picker.runModal() == .OK, let folder = picker.url else { return }
-            next.customFolderPath = folder.path
+            folderPath = folder.path
         }
-        let oldURL = vaultURL
-        let newURL = vaultURL(for: next)
         do {
             var nextKey = key
+            if mode != .memory, nextKey == nil {
+                try await authenticate()
+                guard !isLocked, lockEpoch == epoch else { return }
+                nextKey = try loadKey(true)
+            }
+            isAuthenticating = true
+            defer { isAuthenticating = false }
+            // Read the latest preferences after authentication; unrelated choices may have changed.
+            var next = preferences
+            next.storageMode = mode
+            next.persistPinnedOnly = pinnedOnly
+            next.customFolderPath = folderPath
+            let newURL = vaultURL(for: next)
             if let newURL {
                 if newURL != oldURL && FileManager.default.fileExists(atPath: newURL.path) {
-                    errorMessage = "This folder already contains a vault. Choose an empty folder to avoid replacing saved history."
+                    errorMessage = "This location already contains a vault. Restore its settings or choose an empty folder."
                     return
                 }
-                if key == nil {
-                    try await authenticate()
-                    guard !isLocked, lockEpoch == epoch else { return }
-                    nextKey = try KeyStore().load(allowCreation: true)
-                }
                 guard let nextKey else { throw KeyStoreError.missing }
-                try EncryptedVault(url: newURL).save(archived(snapshot, settings: next), key: nextKey)
+                try await worker.save(archived(snapshot, settings: next), to: newURL, key: nextKey)
+                guard !isLocked, lockEpoch == epoch else { return }
             }
-            if let oldURL, oldURL != newURL, FileManager.default.fileExists(atPath: oldURL.path) {
-                do { try FileManager.default.removeItem(at: oldURL) }
-                catch {
-                    if let newURL { try? FileManager.default.removeItem(at: newURL) }
-                    throw error
-                }
-            }
-            preferences = next
+            // Commit the new pointer before removing the old file, so interruption is recoverable.
+            preferences.storageMode = mode
+            preferences.persistPinnedOnly = pinnedOnly
+            preferences.customFolderPath = folderPath
+            savePreferences()
+            guard defaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
             key = mode == .memory ? nil : nextKey
             cloudVault = nil
             syncState = SyncState()
             resetSyncStatus()
-            savePreferences()
+            hasPendingLocalSave = false
+            if let oldURL, oldURL != newURL, FileManager.default.fileExists(atPath: oldURL.path) {
+                do { try FileManager.default.removeItem(at: oldURL) }
+                catch { errorMessage = "Storage was updated, but the previous encrypted copy could not be removed. Remove it after verifying the new vault." }
+            }
+            if newURL != nil { hasPendingLocalSave = true; schedulePersistence() }
             notify("Storage updated · \(storageLabel)")
-        } catch { errorMessage = "Storage was not changed. \(error.localizedDescription)" }
+        } catch { errorMessage = "Storage could not be updated. \(error.localizedDescription) Existing encrypted copies were preserved." }
     }
 
     private func authenticate() async throws {
@@ -508,44 +549,88 @@ final class AppModel: ObservableObject {
     }
 
     func unlock(syncPassphrase: String = "") async {
-        guard isLocked, !isSessionSuspended, !isAuthenticating else { return }
+        guard isLocked, !isAuthenticating else { return }
+        guard !isSessionSuspended else {
+            errorMessage = "The session is still suspended. If your Mac is awake and unlocked, choose Recover Session to verify and resume it."
+            return
+        }
         let epoch = lockEpoch
         do {
+            if preferences.storageMode != .memory { try await authenticate() }
+            guard lockEpoch == epoch else { return }
+            isAuthenticating = true
+            defer { isAuthenticating = false }
             if preferences.storageMode == .iCloud {
-                try await authenticate()
+                let connected = try await worker.connect(url: cloudLocation(), passphrase: syncPassphrase, create: false)
+                let exchanged: SyncState
+                var maintenanceIssue: String?
+                do { exchanged = try await worker.exchange(SyncState(), vault: connected, preferences: preferences) }
+                catch CloudVaultError.tooManyDeletes {
+                    exchanged = try await worker.read(connected)
+                    maintenanceIssue = CloudVaultError.tooManyDeletes.localizedDescription
+                }
                 guard lockEpoch == epoch else { return }
-                isAuthenticating = true
-                defer { isAuthenticating = false }
-                let url = try cloudLocation()
-                let connected = try await Task.detached(priority: .userInitiated) {
-                    try CloudVault.connect(url: url, passphrase: syncPassphrase, createIfMissing: false)
-                }.value
-                guard lockEpoch == epoch else { return }
-                let exchanged = try connected.exchange(SyncState(), preferences: preferences)
                 cloudVault = connected
                 syncState = exchanged
-                snapshot = exchanged.snapshot
+                snapshot = CloudVault.visibleSnapshot(exchanged.snapshot, preferences: preferences)
                 resetSyncStatus(lastMerge: Date())
+                syncIssue = maintenanceIssue
             } else if let url = vaultURL {
-                try await authenticate()
+                guard FileManager.default.fileExists(atPath: url.path) else { throw VaultError.missing }
+                let loadedKey = try loadKey(false)
+                let saved = try await worker.load(from: url, key: loadedKey)
                 guard lockEpoch == epoch else { return }
-                let loadedKey = try KeyStore().load(allowCreation: !FileManager.default.fileExists(atPath: url.path))
-                let saved = try EncryptedVault(url: url).load(key: loadedKey)
                 let pruned = History.pruned(saved, preferences: preferences)
-                try EncryptedVault(url: url).save(archived(pruned, settings: preferences), key: loadedKey)
                 key = loadedKey
                 snapshot = pruned
+                hasPendingLocalSave = pruned != saved
             }
             isLocked = false
             selectedID = snapshot.entries.first?.id
             configureMonitor()
+            schedulePersistence()
         } catch { errorMessage = "History remains locked. \(error.localizedDescription)" }
+    }
+
+    func recoverSession(syncPassphrase: String = "") async {
+        guard isSessionSuspended, !isAuthenticating else { return }
+        let epoch = lockEpoch
+        do {
+            try await authenticate()
+            guard lockEpoch == epoch, sessionIsActive() else {
+                errorMessage = "Your Mac must be awake, unlocked and in your active session before capture can resume."
+                return
+            }
+            let retained = resumeAfterSession
+            sessionSuspensions.removeAll()
+            resumeAfterSession = false
+            if retained {
+                isLocked = false
+                prune()
+                selectedID = snapshot.entries.first?.id
+                configureMonitor()
+            } else { await unlock(syncPassphrase: syncPassphrase) }
+        } catch { errorMessage = "Session recovery was cancelled or unavailable. \(error.localizedDescription)" }
+    }
+
+    func requestLock() {
+        if hasUnsavedChanges {
+            let alert = NSAlert()
+            alert.messageText = "Discard changes waiting to be saved?"
+            alert.informativeText = "Locking clears memory. Pending encrypted history changes cannot be recovered. Keep CopyTaste unlocked to retry saving."
+            alert.addButton(withTitle: "Keep Unlocked")
+            alert.addButton(withTitle: "Discard and Lock")
+            guard alert.runModal() == .alertSecondButtonReturn else { return }
+        }
+        lock()
     }
 
     func lock() {
         guard !isDemo else { return }
         resumeAfterSession = false
         lockEpoch += 1
+        storageTask?.cancel()
+        runningSync?.cancel()
         monitor?.stop()
         isCapturing = false
         clearOwnedClipboard()
@@ -556,10 +641,9 @@ final class AppModel: ObservableObject {
         cloudVault = nil
         syncState = SyncState()
         resetSyncStatus()
+        hasPendingLocalSave = false
+        DeviceAuthentication.context = nil
         selectedID = nil
-        query = ""
-        scope = .all
-        showSettings = false
         isLocked = true
     }
 
@@ -572,6 +656,9 @@ final class AppModel: ObservableObject {
     func shutdown() {
         resumeAfterSession = false
         lockEpoch += 1
+        storageTask?.cancel()
+        runningSync?.cancel()
+        storageTask?.cancel(); runningSync?.cancel()
         monitor?.stop(); syncTimer?.invalidate(); maintenanceTimer?.invalidate()
         isCapturing = false
         for observer in observers { observer.center.removeObserver(observer.token) }
@@ -582,48 +669,98 @@ final class AppModel: ObservableObject {
     }
 
     private func enableCloudSync(passphrase: String) async {
+        storageTransition = true
+        storageTask?.cancel()
+        await storageTask?.value
+        defer { storageTransition = false; schedulePersistence() }
         let epoch = lockEpoch
         do {
-            let url = try cloudLocation()
             try await authenticate()
             guard !isLocked, epoch == lockEpoch else { return }
             isAuthenticating = true
             defer { isAuthenticating = false }
-            let connected = try await Task.detached(priority: .userInitiated) {
-                try CloudVault.connect(url: url, passphrase: passphrase)
-            }.value
+            let connected = try await worker.connect(url: cloudLocation(), passphrase: passphrase, create: true)
+            let sent = snapshot
+            let exchanged = try await worker.exchange(SyncState(snapshot: sent), vault: connected, preferences: preferences, allowImport: true)
             guard !isLocked, epoch == lockEpoch else { return }
-            var next = preferences
-            next.storageMode = .iCloud
-            next.persistPinnedOnly = false
-            let exchanged = try connected.exchange(SyncState(snapshot: snapshot), preferences: next)
-            // A shared iCloud vault is never removed when another mode is selected.
-            if let old = vaultURL, FileManager.default.fileExists(atPath: old.path) { try FileManager.default.removeItem(at: old) }
-            preferences = next
+            let old = vaultURL
+            preferences.storageMode = .iCloud
+            preferences.persistPinnedOnly = false
+            savePreferences()
+            guard defaults.synchronize() else { throw CocoaError(.fileWriteUnknown) }
             cloudVault = connected
             syncState = exchanged
-            snapshot = exchanged.snapshot
+            syncState.applyLocalChanges(from: sent, to: snapshot)
+            snapshot = CloudVault.visibleSnapshot(syncState.snapshot, preferences: preferences)
             key = nil
+            hasPendingLocalSave = false
             resetSyncStatus(lastMerge: Date())
-            savePreferences()
+            hasPendingSync = syncState != exchanged
+            if let old, FileManager.default.fileExists(atPath: old.path) {
+                do { try FileManager.default.removeItem(at: old) }
+                catch { errorMessage = "iCloud sync is enabled, but the previous local encrypted copy could not be removed. Verify sync before removing that copy." }
+            }
+            schedulePersistence()
             notify("iCloud sync enabled · encrypted with your sync passphrase")
-        } catch { errorMessage = "iCloud sync was not enabled. \(error.localizedDescription)" }
+        } catch { errorMessage = "iCloud sync could not be enabled. \(error.localizedDescription) Existing encrypted copies were preserved." }
     }
 
-    func syncNow(userInitiated: Bool = false) {
+    func syncNow(userInitiated: Bool = false) async {
+        if let runningSync { await runningSync.value; return }
+        runningSync = Task { [weak self] in
+            guard let self else { return }
+            await self.performSync(userInitiated: userInitiated)
+        }
+        await runningSync?.value
+        runningSync = nil
+    }
+
+    private func performSync(userInitiated: Bool) async {
         guard !isLocked, preferences.storageMode == .iCloud, let cloudVault,
               userInitiated || ContinuousClock.now >= nextSyncAttempt else { return }
+        let epoch = lockEpoch
+        let sent = syncState
         do {
-            let exchanged = try cloudVault.exchange(syncState, preferences: preferences)
-            syncState = exchanged
-            if snapshot != exchanged.snapshot { snapshot = exchanged.snapshot }
+            let exchanged = try await worker.exchange(sent, vault: cloudVault, preferences: preferences)
+            guard !Task.isCancelled, lockEpoch == epoch, !isLocked, preferences.storageMode == .iCloud else { return }
+            let changedWhileSaving = syncState != sent
+            syncState = changedWhileSaving ? exchanged.merging(syncState) : exchanged
+            syncState.generation = exchanged.generation
+            snapshot = CloudVault.visibleSnapshot(syncState.snapshot, preferences: preferences)
             resetSyncStatus(lastMerge: Date())
-        } catch {
+            hasPendingSync = syncState != exchanged
+        } catch is CancellationError { return }
+        catch {
+            guard lockEpoch == epoch else { return }
             syncFailures = min(syncFailures + 1, 5)
             nextSyncAttempt = ContinuousClock.now + .seconds(min(90, 6 << (syncFailures - 1)))
             syncIssue = error.localizedDescription
             if userInitiated { errorMessage = "Sync could not merge. \(error.localizedDescription)" }
         }
+    }
+
+    func compactSyncHistory() async {
+        guard !isLocked, !isAuthenticating, let cloudVault else { return }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        await runningSync?.value
+        let epoch = lockEpoch
+        let sent = syncState
+        do {
+            var fresh = try await worker.compact(sent, vault: cloudVault)
+            guard lockEpoch == epoch, !isLocked else { return }
+            if syncState != sent {
+                var delta = syncState
+                delta.generation = fresh.generation
+                fresh = fresh.merging(delta)
+            }
+            syncState = fresh
+            snapshot = CloudVault.visibleSnapshot(fresh.snapshot, preferences: preferences)
+            resetSyncStatus(lastMerge: Date())
+            hasPendingSync = true
+            await syncNow(userInitiated: true)
+            notify("Sync history compacted. Reopen sync on your other Macs before editing there.")
+        } catch { errorMessage = "Sync history was not compacted. \(error.localizedDescription)" }
     }
 
     private func resetSyncStatus(lastMerge: Date? = nil) {
@@ -646,13 +783,14 @@ final class AppModel: ObservableObject {
         }
         resumeAfterSession = wasUnlocked
         lockEpoch += 1
+        storageTask?.cancel()
+        runningSync?.cancel()
         monitor?.stop()
         isCapturing = false
         clearOwnedClipboard()
         transfers.removeAll()
         PreviewCache.shared.removeAll()
         selectedID = nil
-        query = ""
         isLocked = true
     }
 
@@ -704,6 +842,7 @@ final class AppModel: ObservableObject {
 
 @MainActor
 enum DeviceAuthentication {
+    static var context: LAContext?
     static func authenticate() async throws {
         let context = LAContext()
         var reason: NSError?
@@ -712,5 +851,33 @@ enum DeviceAuthentication {
                 userInfo: [NSLocalizedDescriptionKey: "Set a Mac login password to use encrypted storage."])
         }
         try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Open CopyTaste encrypted history")
+        self.context = context
+    }
+}
+
+@MainActor enum SessionState {
+    static func isActive() -> Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+              session[kCGSessionOnConsoleKey as String] as? Bool == true,
+              session[kCGSessionLoginDoneKey as String] as? Bool == true,
+              session["CGSSessionScreenIsLocked"] as? Bool != true,
+              NSWorkspace.shared.frontmostApplication != nil else { return false }
+        return !IsSecureEventInputEnabled()
+    }
+}
+
+private extension RejectionReason {
+    var captureMessage: String {
+        switch self {
+        case .sourceChanged: "A copy was skipped during an app switch. Copy it again after switching."
+        case .secret, .concealed: "A private or potentially sensitive copy was skipped."
+        case .tooLarge: "A copy exceeded the capture size limit."
+        case .excludedApplication: "A copy from an excluded app was skipped."
+        case .secureInput: "Capture paused for a copy while secure input was active."
+        case .unknownSource: "A copy with an unknown source was skipped."
+        case .unsupported, .empty: "An empty or unsupported copy was skipped."
+        case .permissionRequired: "Clipboard access needs approval. Set Paste from Other Apps to Allow in System Settings."
+        case .selfWrite: ""
+        }
     }
 }

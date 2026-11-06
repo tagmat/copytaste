@@ -43,7 +43,8 @@ final class FileTransferTests: XCTestCase {
     @MainActor func testPDFPreviewRendersInMemory() async throws {
         let data = try XCTUnwrap(DemoContent.samplePDF())
         let entry = ClipEntry(kind: .file, fileData: data, fileName: "sample.pdf", sourceName: "Fixture", sourceBundleID: "org.example.fixture")
-        XCTAssertNotNil(PreviewCache.shared.thumbnail(entry))
+        let thumbnail = await PreviewCache.shared.loadThumbnail(entry)
+        XCTAssertNotNil(thumbnail)
         PreviewCache.shared.removeAll()
     }
 

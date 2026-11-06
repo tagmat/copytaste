@@ -60,8 +60,11 @@ final class EncryptedVaultTests: XCTestCase {
         }
     }
 
-    func testMissingVaultStartsEmpty() throws {
-        try withVault { vault, _ in XCTAssertEqual(try vault.load(key: SymmetricKey(size: .bits256)), VaultSnapshot()) }
+    func testMissingVaultThrowsWithoutCreatingAReplacement() throws {
+        try withVault { vault, _ in
+            XCTAssertThrowsError(try vault.load(key: SymmetricKey(size: .bits256)))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: vault.url.path))
+        }
     }
 
     func testSymlinksAreRejectedWithoutTouchingDestination() throws {

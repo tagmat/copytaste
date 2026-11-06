@@ -6,7 +6,7 @@ import XCTest
 final class SessionLifecycleTests: XCTestCase {
     @MainActor func testScreenUnlockRetainsHistoryAndCapturesOnlyNewCopies() async throws {
         try await withSession { model, monitor, board, _, screen in
-            copy("Before the synthetic screen lock", to: board, monitor: monitor)
+            await copy("Before the synthetic screen lock", to: board, monitor: monitor)
             let before = model.snapshot
             screen.post(name: .init("com.apple.screenIsLocked"), object: nil)
             screen.post(name: .init("com.apple.screenIsLocked"), object: nil)
@@ -23,9 +23,9 @@ final class SessionLifecycleTests: XCTestCase {
             XCTAssertFalse(model.isLocked)
             XCTAssertFalse(model.isSessionSuspended)
             XCTAssertTrue(model.isCapturing)
-            monitor.poll()
+            await monitor.poll()
             XCTAssertEqual(model.snapshot.entries.map(\.text), before.entries.map(\.text))
-            copy("After the synthetic screen unlock", to: board, monitor: monitor)
+            await copy("After the synthetic screen unlock", to: board, monitor: monitor)
             XCTAssertEqual(model.snapshot.entries.first?.text, "After the synthetic screen unlock")
             XCTAssertEqual(model.snapshot.entries.count, 2)
         }
@@ -83,7 +83,7 @@ final class SessionLifecycleTests: XCTestCase {
         var settings = Preferences()
         settings.clearHistoryOnSessionLock = true
         try await withSession(settings: settings) { model, monitor, board, workspace, screen in
-            copy("Synthetic clip cleared by policy", to: board, monitor: monitor)
+            await copy("Synthetic clip cleared by policy", to: board, monitor: monitor)
             XCTAssertEqual(model.snapshot.entries.count, 1)
             workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
             screen.post(name: .init("com.apple.screenIsLocked"), object: nil)
@@ -92,7 +92,7 @@ final class SessionLifecycleTests: XCTestCase {
             XCTAssertTrue(model.isLocked)
             screen.post(name: .init("com.apple.screenIsUnlocked"), object: nil)
             XCTAssertTrue(model.isCapturing)
-            copy("Synthetic clip captured after clearing", to: board, monitor: monitor)
+            await copy("Synthetic clip captured after clearing", to: board, monitor: monitor)
             XCTAssertEqual(model.snapshot.entries.first?.text, "Synthetic clip captured after clearing")
         }
     }
@@ -127,10 +127,10 @@ final class SessionLifecycleTests: XCTestCase {
         }
     }
 
-    @MainActor private func copy(_ value: String, to board: NSPasteboard, monitor: ClipboardMonitor) {
+    @MainActor private func copy(_ value: String, to board: NSPasteboard, monitor: ClipboardMonitor) async {
         board.clearContents()
         XCTAssertTrue(board.setString(value, forType: .string))
-        monitor.poll()
+        await monitor.poll()
     }
 
     @MainActor private func withSession(settings: Preferences = Preferences(),

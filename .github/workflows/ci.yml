@@ -8,12 +8,22 @@ jobs:
   test-and-build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan committed history for secrets
+        run: |
+          brew install gitleaks
+          gitleaks git --redact --no-banner --log-opts="--all --full-history" .
       - name: Run tests
-        run: ./scripts/test.sh
+        run: ./scripts/test.sh -Xswiftc -warnings-as-errors
+      - name: Verify file transfers to an App Sandbox reader
+        run: ./scripts/test-sandbox-transfer.sh
       - name: Build application
         run: ./scripts/build-app.sh --universal
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CopyTaste-macOS
-          path: dist/CopyTaste.app
+          path: dist/CopyTaste-macOS.zip
+          if-no-files-found: error

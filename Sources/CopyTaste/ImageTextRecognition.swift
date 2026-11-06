@@ -28,7 +28,7 @@ actor ImageTextRecognition {
         catch { return nil }
         guard !Task.isCancelled else { return nil }
         let lines = (request.results ?? []).prefix(96).compactMap { $0.topCandidates(1).first?.string }
-        guard !lines.contains(where: CapturePolicy.containsSecret) else { return nil }
+        guard !lines.contains(where: { CapturePolicy.containsSecret($0) }) else { return nil }
         let result = String(lines.joined(separator: "\n").prefix(4_096))
         return CapturePolicy().rejection(forText: result) == nil ? result : nil
     }

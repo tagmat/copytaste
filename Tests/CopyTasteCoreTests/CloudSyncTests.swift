@@ -133,6 +133,8 @@ final class CloudSyncTests: XCTestCase {
             let second = SyncState(snapshot: VaultSnapshot(collections: (0..<20).map { ClipCollection(name: "Second \($0)") }))
             XCTAssertThrowsError(try vault.exchange(second, preferences: Preferences()))
             XCTAssertEqual(try Data(contentsOf: url), bytes)
+            XCTAssertThrowsError(try vault.compact(second))
+            XCTAssertEqual(try Data(contentsOf: url), bytes)
             let reopened = try CloudVault.connect(url: url, passphrase: phrase)
             XCTAssertEqual(try reopened.exchange(SyncState(), preferences: Preferences()).snapshot.collections.count, 20)
         }
@@ -163,7 +165,7 @@ final class CloudSyncTests: XCTestCase {
             let state = SyncState(snapshot: VaultSnapshot(entries: [entry("password=synthetic-fixture")]))
             let result = try vault.exchange(state, preferences: Preferences())
             XCTAssertTrue(result.snapshot.entries.isEmpty)
-            XCTAssertFalse(result.deletions.isEmpty)
+            XCTAssertTrue(result.deletions.isEmpty)
         }
     }
 }

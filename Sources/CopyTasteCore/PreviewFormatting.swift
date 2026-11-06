@@ -64,9 +64,15 @@ public struct CodeToken: Equatable, Sendable {
 }
 
 public enum CodeTokenizer {
-    private static let expression = try! NSRegularExpression(pattern: #"(?<comment>//[^\n]*|#[^\n]*|/\*[\s\S]*?\*/)|(?<string>\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|(?<number>\b\d+(?:\.\d+)?\b)|(?<keyword>\b(?:let|var|func|struct|class|enum|protocol|extension|import|return|if|else|guard|for|while|switch|case|break|continue|true|false|nil|null|const|function|export|from|async|await|try|catch|throw|def|self|in|public|private|static|final|mutating|fn|impl|use|SELECT|FROM|WHERE)\b)|(?<function>\b[A-Za-z_][A-Za-z_0-9]*(?=\s*\())"#)
+    private static let pattern = #"(?<comment>//[^\n]*|/\*[\s\S]*?\*/)|(?<string>\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')|(?<number>\b\d+(?:\.\d+)?\b)|(?<keyword>\b(?:let|var|func|struct|class|enum|protocol|extension|import|return|if|else|guard|for|while|switch|case|break|continue|true|false|nil|null|const|function|export|from|async|await|try|catch|throw|def|self|in|public|private|static|final|mutating|fn|impl|use|SELECT|FROM|WHERE)\b)|(?<function>\b[A-Za-z_][A-Za-z_0-9]*(?=\s*\())"#
 
-    public static func tokens(in text: String) -> [CodeToken] {
+    private static let expression = try! NSRegularExpression(pattern: pattern)
+    private static let hashExpression = try! NSRegularExpression(pattern: pattern.replacingOccurrences(of: "(?<comment>", with: "(?<comment>#[^\\n]*|"))
+
+    public static func tokens(in text: String, fileName: String? = nil) -> [CodeToken] {
+        let ext = ((fileName ?? "") as NSString).pathExtension.lowercased()
+        let hashComments = ["py", "sh", "bash", "zsh", "yml", "yaml", "rb", "toml"].contains(ext) || text.hasPrefix("#!")
+        let expression = hashComments ? hashExpression : expression
         let text = String(text.prefix(8_000))
         let kinds: [CodeTokenKind] = [.comment, .string, .number, .keyword, .function]
         return expression.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in

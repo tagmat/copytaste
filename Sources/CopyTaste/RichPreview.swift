@@ -5,6 +5,7 @@ import CopyTasteCore
 struct CodePreview: View {
     let source: String
     var lines = 7
+    var fileName: String?
     var body: some View {
         Text(highlighted).font(.system(size: 11, design: .monospaced)).lineSpacing(3).lineLimit(lines)
             .frame(maxWidth: .infinity, alignment: .topLeading).allowsHitTesting(false)
@@ -13,7 +14,7 @@ struct CodePreview: View {
         let text = String(source.prefix(8_000))
         var value = AttributedString(text)
         value.foregroundColor = Palette.text
-        for token in CodeTokenizer.tokens(in: text) {
+        for token in CodeTokenizer.tokens(in: text, fileName: fileName) {
             let color: Color
             switch token.kind {
             case .keyword: color = Palette.violet
@@ -40,7 +41,7 @@ struct MarkdownPreview: View {
                 case .paragraph(let text): Text(inline(text)).font(.system(size: 11)).lineLimit(3)
                 case .list(let text): HStack(alignment: .top, spacing: 6) { Circle().fill(Palette.mint).frame(width: 3, height: 3).padding(.top, 5); Text(inline(text)).font(.system(size: 11)).lineLimit(2) }
                 case .quote(let text): Text(inline(text)).font(.system(size: 11)).italic().foregroundStyle(Palette.secondary).lineLimit(2)
-                case .code(_, let text): CodePreview(source: text, lines: 5).padding(8).background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+                case .code(let language, let text): CodePreview(source: text, lines: 5, fileName: "snippet." + language).padding(8).background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
                 case .rule: Divider().overlay(Palette.secondary.opacity(0.3))
                 }
             }

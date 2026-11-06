@@ -56,47 +56,84 @@ extension ClipKind {
     }
 }
 
-@MainActor final class PreviewCache {
+@MainActor final class PreviewCache: ObservableObject {
     static let shared = PreviewCache()
+    @Published private(set) var revision = 0
     private let images = NSCache<NSString, NSImage>()
+    private var requested: Set<UUID> = []
+    private var pending: [UUID: Task<Data?, Never>] = [:]
+    private var generation = 0
     init() { images.countLimit = 40; images.totalCostLimit = 24 * 1_024 * 1_024 }
 
     func thumbnail(_ entry: ClipEntry) -> NSImage? {
+        if let cached = images.object(forKey: entry.id.uuidString as NSString) { return cached }
+        if requested.insert(entry.id).inserted {
+            Task { [weak self] in _ = await self?.loadThumbnail(entry) }
+        }
+        return nil
+    }
+
+    func loadThumbnail(_ entry: ClipEntry) async -> NSImage? {
         let key = entry.id.uuidString as NSString
         if let cached = images.object(forKey: key) { return cached }
-        guard let data = entry.imageData ?? entry.fileData else { return nil }
-        var image: NSImage?
-        if let source = CGImageSourceCreateWithData(data as CFData, nil),
-           let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-           let width = info[kCGImagePropertyPixelWidth] as? Int, let height = info[kCGImagePropertyPixelHeight] as? Int,
-           width > 0, height > 0, width <= 8_192, height <= 8_192, width * height <= 16_000_000 {
-            let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 560, kCGImageSourceCreateThumbnailWithTransform: true]
-            if let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) { image = NSImage(cgImage: cg, size: .zero) }
-        } else if entry.fileName?.lowercased().hasSuffix(".pdf") == true {
-            if let document = PDFDocument(data: data), let page = document.page(at: 0) {
-                image = withExtendedLifetime(document) { page.thumbnail(of: NSSize(width: 420, height: 320), for: .cropBox) }
-            }
-        }
-        if let image { images.setObject(image, forKey: key, cost: 560 * 400 * 4) }
+        let epoch = generation
+        let task = pending[entry.id] ?? Task.detached(priority: .utility) { PreviewRenderer.data(entry) }
+        pending[entry.id] = task
+        let bytes = await task.value
+        guard generation == epoch else { return nil }
+        pending.removeValue(forKey: entry.id)
+        requested.insert(entry.id)
+        guard let bytes, let image = NSImage(data: bytes) else { return nil }
+        requested.remove(entry.id)
+        images.setObject(image, forKey: key, cost: 560 * 560 * 4)
+        revision += 1
         return image
     }
 
-    func removeAll() { images.removeAllObjects() }
+    func removeAll() {
+        generation += 1
+        for task in pending.values { task.cancel() }
+        pending.removeAll(); requested.removeAll(); images.removeAllObjects()
+        revision += 1
+    }
+}
+
+private enum PreviewRenderer {
+    static func data(_ entry: ClipEntry) -> Data? {
+        guard !Task.isCancelled, let data = entry.imageData ?? entry.fileData,
+              data.count <= CapturePolicy.maxFileBytes else { return nil }
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let width = info[kCGImagePropertyPixelWidth] as? Int, let height = info[kCGImagePropertyPixelHeight] as? Int,
+           (1...8_192).contains(width), (1...8_192).contains(height), width * height <= 16_000_000 {
+            let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 560, kCGImageSourceCreateThumbnailWithTransform: true]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+        }
+        if entry.fileName?.lowercased().hasSuffix(".pdf") == true,
+           let document = PDFDocument(data: data), let page = document.page(at: 0) {
+            let image = withExtendedLifetime(document) { page.thumbnail(of: NSSize(width: 420, height: 320), for: .cropBox) }
+            guard !Task.isCancelled, let tiff = image.tiffRepresentation else { return nil }
+            return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+        }
+        return nil
+    }
 }
 
 struct FilePreview: View {
     let entry: ClipEntry
+    @ObservedObject private var cache = PreviewCache.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let preview = PreviewCache.shared.thumbnail(entry) {
+            if let preview = cache.thumbnail(entry) {
                 Image(nsImage: preview).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 126)
                     .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
             } else if let data = entry.fileData, CapturePolicy.isTextFile(entry.fileName ?? ""), data.count <= CapturePolicy.maxTextBytes {
                 let text = String(decoding: data.prefix(8_000), as: UTF8.self)
                 Group {
                     if PreviewFormatting.isMarkdown(text, fileName: entry.fileName) { MarkdownPreview(source: text) }
-                    else if PreviewFormatting.isCode(text, fileName: entry.fileName) { CodePreview(source: text) }
+                    else if PreviewFormatting.isCode(text, fileName: entry.fileName) { CodePreview(source: text, fileName: entry.fileName) }
                     else { Text(text).font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(6) }
                 }.frame(maxWidth: .infinity, alignment: .topLeading).frame(height: 126, alignment: .topLeading).clipped()
             } else {

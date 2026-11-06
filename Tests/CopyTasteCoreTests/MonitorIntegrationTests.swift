@@ -17,12 +17,12 @@ final class MonitorIntegrationTests: XCTestCase {
     }
 
     @MainActor func testBrowserImagePixelsWinOverAccompanyingURL() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var entries: [ClipEntry] = []
             monitor.onCapture = { entries.append($0) }
             board.clearContents()
             XCTAssertTrue(board.writeObjects([try imageItem()]))
-            monitor.poll()
+            await monitor.poll()
             XCTAssertEqual(entries.first?.kind, .image)
             XCTAssertNotNil(entries.first?.imageData)
             XCTAssertNil(entries.first?.text)
@@ -30,32 +30,32 @@ final class MonitorIntegrationTests: XCTestCase {
     }
 
     @MainActor func testDisabledImageCaptureDoesNotSilentlySaveItsURL() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             monitor.captureImages = false
             var captured = false
             monitor.onCapture = { _ in captured = true }
             board.clearContents()
             XCTAssertTrue(board.writeObjects([try imageItem()]))
-            monitor.poll()
+            await monitor.poll()
             XCTAssertFalse(captured)
         }
     }
 
     @MainActor func testPrivateImageAndURLAreBothRejected() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var captured = false
             monitor.onCapture = { _ in captured = true }
             let item = try imageItem()
             item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
             board.clearContents()
             XCTAssertTrue(board.writeObjects([item]))
-            monitor.poll()
+            await monitor.poll()
             XCTAssertFalse(captured)
         }
     }
 
     @MainActor func testRegularFileCaptureStoresBytesAndName() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("copytaste-file-test-" + UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: folder) }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -65,7 +65,7 @@ final class MonitorIntegrationTests: XCTestCase {
             var captured: ClipEntry?
             monitor.onCapture = { captured = $0 }
             let item = NSPasteboardItem(); item.setString(url.absoluteString, forType: .fileURL)
-            board.clearContents(); XCTAssertTrue(board.writeObjects([item])); monitor.poll()
+            board.clearContents(); XCTAssertTrue(board.writeObjects([item])); await monitor.poll()
             XCTAssertEqual(captured?.kind, .file)
             XCTAssertEqual(captured?.fileData, bytes)
             XCTAssertEqual(captured?.fileName, "note.md")
@@ -73,7 +73,7 @@ final class MonitorIntegrationTests: XCTestCase {
     }
 
     @MainActor func testFileSymlinkCannotBypassProtectedNameFilter() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("copytaste-file-test-" + UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: folder) }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -83,36 +83,36 @@ final class MonitorIntegrationTests: XCTestCase {
             try FileManager.default.createSymbolicLink(at: link, withDestinationURL: original)
             var captured = false; monitor.onCapture = { _ in captured = true }
             let item = NSPasteboardItem(); item.setString(link.absoluteString, forType: .fileURL)
-            board.clearContents(); XCTAssertTrue(board.writeObjects([item])); monitor.poll()
+            board.clearContents(); XCTAssertTrue(board.writeObjects([item])); await monitor.poll()
             XCTAssertFalse(captured)
         }
     }
     @MainActor private func withMonitor(source: String? = "org.example.editor", secure: Bool = false,
-        body: (ClipboardMonitor, NSPasteboard) throws -> Void) throws {
+        body: @MainActor (ClipboardMonitor, NSPasteboard) async throws -> Void) async throws {
         let board = NSPasteboard(name: .init("net.tagmat.copytaste.test." + UUID().uuidString))
         defer { board.releaseGlobally() }
         let monitor = ClipboardMonitor(pasteboard: board,
             sourceProvider: { ClipboardSource(bundleID: source, name: "Synthetic editor") },
             secureInputProvider: { secure })
-        try body(monitor, board)
+        try await body(monitor, board)
         monitor.stop()
     }
 
     @MainActor func testMonitorCapturesHarmlessCopyExactlyOnce() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var captured: [ClipEntry] = []
             monitor.onCapture = { captured.append($0) }
             board.clearContents()
             XCTAssertTrue(board.setString("A harmless synthetic note", forType: .string))
-            monitor.poll()
-            monitor.poll()
+            await monitor.poll()
+            await monitor.poll()
             XCTAssertEqual(captured.count, 1)
             XCTAssertEqual(captured.first?.text, "A harmless synthetic note")
         }
     }
 
     @MainActor func testCapturesBareHexColorWithoutCapturingNumericVerificationCode() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var captured: [ClipEntry] = []
             var rejected: [RejectionReason] = []
             monitor.onCapture = { captured.append($0) }
@@ -120,7 +120,7 @@ final class MonitorIntegrationTests: XCTestCase {
             for value in ["bDf27c", "123456"] {
                 board.clearContents()
                 XCTAssertTrue(board.setString(value, forType: .string))
-                monitor.poll()
+                await monitor.poll()
             }
             XCTAssertEqual(captured.map(\.text), ["bDf27c"])
             XCTAssertTrue(captured.first.map(PickerFilter.colors.includes) == true)
@@ -130,7 +130,7 @@ final class MonitorIntegrationTests: XCTestCase {
     }
 
     @MainActor func testMonitorRejectsMarkedPayloadAndSecrets() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var captured: [ClipEntry] = []
             var reasons: [RejectionReason] = []
             monitor.onCapture = { captured.append($0) }
@@ -140,37 +140,37 @@ final class MonitorIntegrationTests: XCTestCase {
             marked.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
             board.clearContents()
             XCTAssertTrue(board.writeObjects([marked]))
-            monitor.poll()
+            await monitor.poll()
             board.clearContents()
             XCTAssertTrue(board.setString("password=synthetic-fixture", forType: .string))
-            monitor.poll()
+            await monitor.poll()
             XCTAssertTrue(captured.isEmpty)
             XCTAssertEqual(reasons, [.concealed, .secret])
         }
     }
 
     @MainActor func testMonitorRejectsProtectedSourceEvenWithoutPrivateMarker() async throws {
-        try withMonitor(source: "com.apple.Passwords") { monitor, board in
+        try await withMonitor(source: "com.apple.Passwords") { monitor, board in
             var captured = false
             var reason: RejectionReason?
             monitor.onCapture = { _ in captured = true }
             monitor.onRejection = { reason = $0 }
             board.clearContents()
             XCTAssertTrue(board.setString("Unmarked synthetic fixture", forType: .string))
-            monitor.poll()
+            await monitor.poll()
             XCTAssertFalse(captured)
             XCTAssertEqual(reason, .excludedApplication)
         }
     }
 
     @MainActor func testMonitorDoesNotImportClipboardOnStartOrResume() async throws {
-        try withMonitor { monitor, board in
+        try await withMonitor { monitor, board in
             var captured = false
             monitor.onCapture = { _ in captured = true }
             board.clearContents()
             XCTAssertTrue(board.setString("Existing synthetic clipboard", forType: .string))
             monitor.start()
-            monitor.poll()
+            await monitor.poll()
             monitor.stop()
             XCTAssertFalse(captured)
         }

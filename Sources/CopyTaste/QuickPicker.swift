@@ -67,6 +67,13 @@ private final class PickerPanel: NSPanel {
         }
     }
 
+    static func frame(in available: NSRect) -> NSRect {
+        let width = min(1120, max(1, available.width - 40))
+        let height = min(560, max(1, available.height - 24))
+        return NSRect(x: available.midX - width / 2,
+            y: max(available.minY + 12, min(available.midY - 240, available.maxY - height - 12)), width: width, height: height)
+    }
+
     func toggle(destination: PasteDestination?) {
         if panel.isVisible { dismiss(); return }
         generation += 1
@@ -81,8 +88,7 @@ private final class PickerPanel: NSPanel {
             onDismiss: { [weak self] in self?.dismiss() }, onSettings: { [weak self] in self?.onSettings?() }))
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         let available = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let width = min(1120, available.width - 40)
-        panel.setFrame(NSRect(x: available.midX - width / 2, y: available.midY - 240, width: width, height: 560), display: true)
+        panel.setFrame(Self.frame(in: available), display: true)
         panel.makeKeyAndOrderFront(nil)
         let ticket = generation
         Task { @MainActor [weak self] in
@@ -137,7 +143,11 @@ private final class PickerPanel: NSPanel {
             case .clipboardChanged: self.model.notify("Clipboard changed. No paste was sent.")
             case .copied:
                 if !self.model.isDemo, let target { _ = NSRunningApplication(processIdentifier: target.processID)?.activate() }
-            case .failed: break
+            case .failed:
+                self.destination = target
+                self.presentation.phase = .closed
+                self.toggle(destination: target)
+                return
             }
             guard self.generation == ticket else { return }
             self.presentation.phase = .closed
@@ -189,6 +199,7 @@ struct QuickPicker: View {
     let onSettings: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var query = ""
+    @State private var matchingEntries: [ClipEntry] = []
     @State private var filter = PickerFilter.all
     @State private var selection = 0
     @State private var folderScope = FolderScope.all
@@ -204,11 +215,14 @@ struct QuickPicker: View {
     @FocusState private var searchFocused: Bool
     private static let numberKeys = Set("123456789".map { KeyEquivalent($0) })
 
-    private var entries: [ClipEntry] {
+    private var entries: [ClipEntry] { matchingEntries }
+
+    private func refreshEntries(reset: Bool = false) {
         let matches = History.search(model.snapshot.entries.filter {
             filter.includes($0) && folderScope.includes($0)
         }, query: query, imageText: model.preferences.imageTextSearch ? imageText : [:])
-        return PickerLayout.ordered(matches, layout: model.preferences.selectorLayout)
+        matchingEntries = PickerLayout.ordered(matches, layout: model.preferences.selectorLayout)
+        if reset { resetSelection() }
     }
     private var pinned: [ClipEntry] { entries.filter(\.isPinned) }
     private var recent: [ClipEntry] { entries.filter { !$0.isPinned } }
@@ -236,10 +250,12 @@ struct QuickPicker: View {
 
     var body: some View {
         Group {
-            if !model.isLocked, let binding = Binding($draft) {
-                ClipEditor(draft: binding, onSave: saveDraft, onClose: closeWorkflow)
-            } else if !model.isLocked, let binding = Binding($folderDraft) {
-                FolderEditor(draft: binding, onSave: saveFolder, onClose: closeWorkflow)
+            if !model.isLocked, let initial = draft {
+                ClipEditor(draft: Binding(get: { draft ?? initial }, set: { if draft != nil { draft = $0 } }),
+                    onSave: saveDraft, onClose: closeWorkflow)
+            } else if !model.isLocked, let initial = folderDraft {
+                FolderEditor(draft: Binding(get: { folderDraft ?? initial }, set: { if folderDraft != nil { folderDraft = $0 } }),
+                    onSave: saveFolder, onClose: closeWorkflow)
             } else if !model.isLocked, let removingFolder {
                 folderRemoval(removingFolder)
             } else if !model.isLocked && showsBatch {
@@ -260,16 +276,19 @@ struct QuickPicker: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(Palette.text).tint(Palette.mint).preferredColorScheme(.dark)
-        .task { await Task.yield(); searchFocused = true; resetSelection() }
+        .task { refreshEntries(reset: true); await Task.yield(); searchFocused = true }
         .task(id: imagesToIndex.map(\.id)) { await indexImages(imagesToIndex) }
         .onChange(of: workflowOpen) { _, open in presentation.allowsScrollNavigation = !open }
-        .onChange(of: query) { _, _ in resetSelection() }
-        .onChange(of: filter) { _, _ in resetSelection() }
-        .onChange(of: folderScope) { _, _ in resetSelection() }
+        .onChange(of: query) { _, _ in refreshEntries(reset: true) }
+        .onChange(of: filter) { _, _ in refreshEntries(reset: true) }
+        .onChange(of: folderScope) { _, _ in refreshEntries(reset: true) }
         .onChange(of: model.snapshot.collections.map(\.id)) { _, ids in
             if case .folder(let id) = folderScope, !ids.contains(id) { folderScope = .all }
         }
-        .onChange(of: model.preferences.selectorLayout) { _, _ in resetSelection() }
+        .onChange(of: model.preferences.selectorLayout) { _, _ in refreshEntries(reset: true) }
+        .onChange(of: model.snapshot) { _, _ in refreshEntries() }
+        .onChange(of: imageText) { _, _ in refreshEntries() }
+        .onChange(of: model.preferences.imageTextSearch) { _, _ in refreshEntries() }
         .onChange(of: presentation.navigationStep) { old, new in if !workflowOpen { move(new - old) } }
         .onChange(of: entries.map(\.id)) { _, identifiers in
             if let id = model.selectedID, let index = identifiers.firstIndex(of: id) { selection = index }
@@ -289,13 +308,42 @@ struct QuickPicker: View {
                 onDismiss()
             }
         }
+        .overlay(alignment: .bottom) {
+            if workflowOpen, let issue = model.errorMessage { errorBanner(issue).padding(12) }
+        }
         .onExitCommand { if workflowOpen { closeWorkflow() } else { onDismiss() } }
         .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.82), value: selection)
+    }
+
+    @ViewBuilder private var statusMessage: some View {
+        if let issue = model.errorMessage { errorBanner(issue) }
+        else if !model.isLocked && !model.isDemo {
+            if let issue = model.syncIssue {
+                Text("Sync is waiting. \(issue)").font(.system(size: 11)).foregroundStyle(Palette.violet)
+                    .lineLimit(2).padding(8).frame(maxWidth: 700).modifier(FrostedSurface(radius: 10))
+            } else if !model.isCapturing {
+                Text("Capture is paused. Open quick settings to resume.").font(.system(size: 11))
+                    .foregroundStyle(Palette.secondary).padding(8).modifier(FrostedSurface(radius: 10))
+            } else if let issue = model.lastCaptureIssue {
+                Text(issue).font(.system(size: 10)).foregroundStyle(Palette.secondary).lineLimit(2)
+                    .padding(6).frame(maxWidth: 700).modifier(FrostedSurface(radius: 10))
+            }
+        }
+    }
+
+    private func errorBanner(_ issue: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(Palette.violet)
+            Text(issue).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
+            Button { model.errorMessage = nil } label: { Image(systemName: "xmark") }
+                .buttonStyle(.plain).accessibilityLabel("Dismiss error")
+        }.padding(12).frame(maxWidth: 700).modifier(FrostedSurface(radius: 12))
     }
 
     private var pickerBody: some View {
         VStack(spacing: 0) {
             searchBar.padding(.top, 22)
+            statusMessage
             GeometryReader { geometry in
                 if model.isLocked { lockedState.frame(maxWidth: .infinity, maxHeight: .infinity) }
                 else if entries.isEmpty { emptyState.frame(maxWidth: .infinity, maxHeight: .infinity) }
@@ -543,10 +591,17 @@ struct QuickPicker: View {
                 (model.preferences.storageMode == .memory ? "The memory session was cleared." : "Authenticate to unlock encrypted history."))
                 .font(.system(size: 12)).foregroundStyle(Palette.secondary)
             if model.preferences.storageMode == .iCloud { SecureField("Sync passphrase", text: $syncPassphrase).textFieldStyle(.roundedBorder).frame(width: 270) }
-            Button(model.isAuthenticating ? "Unlocking…" : "Unlock") {
+            Button(model.isAuthenticating ? "Verifying…" : (model.isSessionSuspended ? "Recover Session…" : "Unlock")) {
                 let phrase = syncPassphrase; syncPassphrase = ""
-                Task { await model.unlock(syncPassphrase: phrase) }
-            }.buttonStyle(.borderedProminent).disabled(model.isAuthenticating || model.isSessionSuspended)
+                Task {
+                    if model.isSessionSuspended { await model.recoverSession(syncPassphrase: phrase) }
+                    else { await model.unlock(syncPassphrase: phrase) }
+                }
+            }.buttonStyle(.borderedProminent).disabled(model.isAuthenticating)
+            if model.isSessionSuspended {
+                Text("Already awake and unlocked? Recover Session verifies your identity before resuming.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.secondary).frame(maxWidth: 320)
+            }
         }.padding(30).modifier(FrostedSurface()).opacity(isOpen ? 1 : 0)
     }
     private func resetSelection() {
@@ -626,6 +681,7 @@ private struct FlightCard: View {
     let onPin: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tilt = CGPoint.zero
+    @ObservedObject private var cache = PreviewCache.shared
     var body: some View {
         let previewText = String((entry.text ?? "").prefix(8_000))
         let color = entry.hexColor
@@ -643,7 +699,7 @@ private struct FlightCard: View {
             Button(action: onChoose) {
                 VStack(alignment: .leading, spacing: 12) {
                     if entry.kind == .file { FilePreview(entry: entry) }
-                    else if entry.kind == .image, let image = PreviewCache.shared.thumbnail(entry) {
+                    else if entry.kind == .image, let image = cache.thumbnail(entry) {
                         Image(nsImage: image).resizable().scaledToFill().frame(maxWidth: .infinity).frame(height: 174).clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 12)).accessibilityLabel("Copied image")
                     } else if entry.kind == .link {

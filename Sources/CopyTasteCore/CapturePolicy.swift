@@ -1,8 +1,8 @@
 import Foundation
 
-public enum RejectionReason: String, Sendable {
+public enum RejectionReason: String, Error, Sendable {
     case concealed, excludedApplication, unknownSource, secureInput, sourceChanged
-    case unsupported, tooLarge, empty, secret, selfWrite
+    case unsupported, tooLarge, empty, secret, selfWrite, permissionRequired
 }
 
 public struct CaptureMetadata: Sendable {
@@ -74,7 +74,7 @@ public struct CapturePolicy: Sendable {
     public static func isProtectedFileName(_ name: String) -> Bool {
         let lower = name.lowercased()
         let ext = (lower as NSString).pathExtension
-        let protectedExtensions: Set<String> = ["pem", "key", "p12", "pfx", "kdbx", "keychain", "keychain-db", "mobileprovision", "provisionprofile", "keystore", "jks", "asc", "gpg"]
+        let protectedExtensions: Set<String> = ["env", "ppk", "pem", "key", "p12", "pfx", "kdbx", "keychain", "keychain-db", "mobileprovision", "provisionprofile", "keystore", "jks", "asc", "gpg"]
         return protectedExtensions.contains(ext) || ["password", "credential", "secret", "private_key", "recovery-key"].contains(where: lower.contains) || lower == ".env" || lower.hasPrefix(".env.") ||
             lower.hasPrefix("id_rsa") || lower.hasPrefix("id_ed25519") ||
             ["credentials", "credentials.json", "secrets.json", "secrets.yaml", "secrets.yml"].contains(lower)
@@ -95,11 +95,11 @@ public struct CapturePolicy: Sendable {
         return extensions.contains((name as NSString).pathExtension.lowercased())
     }
 
-    public func rejection(forText text: String) -> RejectionReason? {
+    public func rejection(forText text: String, manual: Bool = false) -> RejectionReason? {
         if text.utf8.count > Self.maxTextBytes { return .tooLarge }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty { return .empty }
-        if Self.containsSecret(value) { return .secret }
+        if Self.containsSecret(value, includeAmbiguous: !manual) { return .secret }
         return nil
     }
 
@@ -113,13 +113,12 @@ public struct CapturePolicy: Sendable {
         text.range(of: pattern, options: .regularExpression) != nil
     }
 
-    public static func containsSecret(_ text: String) -> Bool {
+    public static func containsSecret(_ text: String, includeAmbiguous: Bool = true) -> Bool {
         let patterns = [
             #"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"#,
             #"(?i)\b(?:authorization["']?\s*:\s*["']?(?:bearer|basic)\s+|(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)["']?\s*[=:]\s*["']?)\S+"#,
             #"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{15,})\b"#,
-            #"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"#,
-            #"^\d{4,8}$"#
+            #"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"#
         ]
         if patterns.contains(where: { matches($0, text) }) { return true }
         if let components = URLComponents(string: text), components.scheme != nil {
@@ -130,13 +129,25 @@ public struct CapturePolicy: Sendable {
                matches(#"(?i)(?:token|password|secret|key|code)="#, fragment) { return true }
         }
         if containsPaymentNumber(text) { return true }
+        guard includeAmbiguous else { return false }
+        if matches(#"^\d{6,8}$"#, text) { return true }
+        if text.hasPrefix("/") || text.hasPrefix("~/") || text.hasPrefix("./") || text.hasPrefix("../") ||
+            matches(#"^[^\s@]+@[^\s@]+\.[^\s@]+$"#, text) ||
+            matches(#"^v?\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]+)?$"#, text) ||
+            matches(#"^[\w./-]+\.[A-Za-z]+:\d+(?::\d+)?$"#, text) { return false }
         // Conservative heuristic for isolated generated credentials. Prose is kept.
-        if (12...256).contains(text.count), !text.contains(where: \.isWhitespace) {
+        if (16...256).contains(text.count), !text.contains(where: \.isWhitespace) {
             let classes = [text.rangeOfCharacter(from: .lowercaseLetters) != nil,
                            text.rangeOfCharacter(from: .uppercaseLetters) != nil,
                            text.rangeOfCharacter(from: .decimalDigits) != nil,
                            text.rangeOfCharacter(from: .punctuationCharacters.union(.symbols)) != nil]
-            if classes.filter({ $0 }).count >= 3 && kind(for: text) != .link { return true }
+            let counts = Dictionary(grouping: text, by: { $0 }).mapValues(\.count)
+            let count = Double(text.count)
+            let entropy = counts.values.reduce(0.0) { total, n in
+                let p = Double(n) / count
+                return total - p * log2(p)
+            }
+            if classes.allSatisfy({ $0 }) && entropy >= 3.5 && kind(for: text) != .link { return true }
         }
         return false
     }

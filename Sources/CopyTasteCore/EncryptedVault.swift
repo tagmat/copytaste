@@ -3,12 +3,13 @@ import CryptoKit
 import Darwin
 
 public enum VaultError: Error, LocalizedError {
-    case oversized, unsupportedVersion, unsafePath
+    case oversized, unsupportedVersion, unsafePath, missing
     public var errorDescription: String? {
         switch self {
         case .oversized: "The vault exceeds the size limit."
         case .unsupportedVersion: "This vault version is not supported."
         case .unsafePath: "The vault location is not a safe regular file."
+        case .missing: "The encrypted vault is missing. Reconnect its disk or restore the original file, then unlock again. No empty vault was created."
         }
     }
 }
@@ -20,7 +21,7 @@ public struct EncryptedVault: Sendable {
 
     public func load(key: SymmetricKey) throws -> VaultSnapshot {
         try validatePath()
-        guard FileManager.default.fileExists(atPath: url.path) else { return VaultSnapshot() }
+        guard FileManager.default.fileExists(atPath: url.path) else { throw VaultError.missing }
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard ((attributes[.size] as? NSNumber)?.intValue ?? Int.max) <= 40 * 1_024 * 1_024 else { throw VaultError.oversized }
         let sealed = try AES.GCM.SealedBox(combined: Data(contentsOf: url))
@@ -36,6 +37,7 @@ public struct EncryptedVault: Sendable {
         let plaintext = try JSONEncoder().encode(snapshot)
         guard plaintext.count <= 36 * 1_024 * 1_024 else { throw VaultError.oversized }
         let encrypted = try AES.GCM.seal(plaintext, using: key, authenticating: Self.context)
+        try Task.checkCancellation()
         guard let data = encrypted.combined else { throw VaultError.oversized }
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,

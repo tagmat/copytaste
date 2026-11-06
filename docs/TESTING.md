@@ -1,6 +1,6 @@
 # Testing
 
-Run `./scripts/test.sh` on a logged-in Mac with Xcode 16.3 or later. Compiler caches stay inside `.build`. Tests use synthetic text, generated images/PDFs, isolated temporary files and uniquely named pasteboards. They never use the general clipboard, Keychain or a real iCloud account. Direct-paste tests inject activation and event delivery. They never send real input.
+Run `./scripts/test.sh -Xswiftc -warnings-as-errors` on a logged-in Mac with Xcode 16.3 or later. Compiler caches stay inside `.build`. Tests use synthetic text, generated images/PDFs, isolated temporary files and uniquely named pasteboards. They never use the general clipboard, Keychain or a real iCloud account. Direct-paste tests inject activation and event delivery. They never send real input.
 
 Coverage includes source/private-marker rejection, content filters, mixed image-and-URL priority, disabled-image skip, file names/contents and symlink rejection, retention, deduplication, filename search, private transfer permissions and cleanup, PDF thumbnails, circular selector slots, recent clips after 100 pins, Markdown blocks, bounded Unicode-safe tokenisation, settings migration, unknown layout fallback and opt-out persistence, destination changes, secure input, missing permission and cancellation during activation. Encryption/sync tests cover authenticated round trips, tampering, nonces, file modes, independent salts, offline deletions, clear boundaries, collection limits and recovery.
 
@@ -28,3 +28,14 @@ Use synthetic data and a dedicated account for permission tests.
 - Test login-item approval, Developer ID signing, notarisation and Intel execution separately.
 
 These platform permission, delivery and accessibility checks are not certified by injected unit tests. See [validation](VALIDATION.md) for checks actually completed.
+
+
+## Publication regression checks
+
+`PublicationReadinessTests` covers preference recovery, missing local vaults, privacy changes during authentication, Unicode phrase compatibility (including an actual older-format encrypted fixture), equal-time sync conflicts, 2,500 automatic captures without accumulating tombstones, clear-boundary compaction, full-log recovery, stale peer rejection after generation rollover, local exclusion/retention scope, environment/key filenames, ordinary text false positives, unprefixed color words, pin byte priority, source-switch accounting, unsupported copies, bounded picker frames and language-aware tokenisation.
+
+`./scripts/test-sandbox-transfer.sh` compiles and ad-hoc signs an isolated App Sandbox helper. It creates synthetic data and a private named pasteboard. The helper must fail to read the direct path before consuming the pasteboard URL, then successfully read the same bytes through AppKit’s URL handoff. The script removes its staging and transfer fixtures. No general clipboard or keyboard input is used.
+
+`gitleaks git --redact --log-opts="--all --full-history" .` scans all committed history. The exact synthetic JWT test fixture has a path-and-value exception in `.gitleaks.toml`. Avoid broad test-directory exclusions.
+
+Release verification includes both CPU architectures and extracting the ZIP into a clean temporary directory to verify the signature and executable bit. Developer ID Keychain migration and actual macOS permission changes still require a signed release test; injected key providers never touch the real Keychain.

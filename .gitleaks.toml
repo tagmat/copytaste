@@ -1,0 +1,10 @@
+title = "CopyTaste secret scanning"
+[extend]
+useDefault = true
+
+# A deliberately invalid JWT used to verify rejection. Do not ignore the test tree.
+[[allowlists]]
+description = "Exact synthetic JWT capture-policy fixture"
+condition = "AND"
+paths = ['''(^|/)Tests/CopyTasteCoreTests/CapturePolicyTests\.swift$''']
+regexes = ['''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJmaXh0dXJlIn0\.c3ludGhldGljZml4dHVyZQ''']

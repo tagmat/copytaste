@@ -4,3 +4,19 @@ dist/
 *.xcuserstate
 .swiftpm/
 *.xcuserdatad/
+
+# Local tooling, credentials and clipboard vaults are never source artifacts.
+.serena/
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+*.mobileprovision
+*.vault
+*.copytaste
+*.dSYM/

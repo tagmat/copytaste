@@ -1,6 +1,6 @@
 # Contributing
 
-Use Xcode 16 or later, Swift 6 and macOS 14 or later. Build and test with the scripts in `scripts/`. No dependency installation is required.
+Use Xcode 16.3 or later, Swift 6 and macOS 14 or later. Build and test with the scripts in `scripts/`. No dependency installation is required.
 
 Use Conventional Commits, for example `fix: reject private clipboard markers` or `feat: add a history filter`. Keep commits focused and use the configured Git author.
 
@@ -11,8 +11,13 @@ Keep the interface in English, preserve tagmat branding and follow native macOS 
 Before submitting:
 
 ```sh
-./scripts/test.sh
+./scripts/test.sh -Xswiftc -warnings-as-errors
+./scripts/test-sandbox-transfer.sh
 ./scripts/build-app.sh --universal
 ```
 
 Include what changed, why it matters and the checks actually run. Security-sensitive reports belong in the private process described in [SECURITY.md](SECURITY.md).
+
+CI runs the same checks with synthetic fixtures and an App Sandbox reader. `gitleaks git --redact --log-opts="--all --full-history" .` scans committed history. The scanner configuration permits only the exact invalid JWT fixture used by the capture-policy test, never the whole test tree. Keep `.serena`, credential files, vaults and generated packages out of commits.
+
+The public repository is [tagmat/copytaste](https://github.com/tagmat/copytaste). Report sensitive issues through [private vulnerability reporting](https://github.com/tagmat/copytaste/security/advisories/new), without posting real clipboard payloads.
