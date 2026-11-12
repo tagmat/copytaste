@@ -24,7 +24,7 @@ History stays in RAM by default. Capture starts only after you enable it. The me
 
 ## Run
 
-The app runs on macOS 14 or later. Building requires Xcode 16.3 or later for the macOS 15.4 pasteboard API. No third-party packages are needed.
+The app runs on macOS 14 or later. Building requires Xcode 16.3 or later for the macOS 15.4 pasteboard API. No third-party packages are needed. Xcode must be the active developer directory: the Command Line Tools alone lack the SwiftUI macro plugin that newer SDKs require. Check with `xcode-select -p`, and switch with `sudo xcode-select -s /Applications/Xcode.app` if it shows `/Library/Developer/CommandLineTools`.
 
 ```sh
 ./scripts/build-app.sh --universal

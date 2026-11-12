@@ -7,13 +7,22 @@ stage=$(mktemp -d "${TMPDIR:-/tmp}/copytaste-build.XXXXXX")
 trap 'rm -rf "$stage"' EXIT
 app="$stage/CopyTaste.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+build_args=(-c release --disable-sandbox --cache-path "$PWD/.build/cache")
 if [[ "${1:-}" == "--universal" ]]; then
-    swift build -Xswiftc -warnings-as-errors -c release --arch arm64 --disable-sandbox --cache-path "$PWD/.build/cache"
-    swift build -Xswiftc -warnings-as-errors -c release --arch x86_64 --disable-sandbox --cache-path "$PWD/.build/cache"
-    lipo -create .build/arm64-apple-macosx/release/CopyTaste .build/x86_64-apple-macosx/release/CopyTaste -output "$app/Contents/MacOS/CopyTaste"
-else
-    swift build -Xswiftc -warnings-as-errors -c release --disable-sandbox --cache-path "$PWD/.build/cache"
-    cp .build/release/CopyTaste "$app/Contents/MacOS/CopyTaste"
+    # One multi-arch build yields a universal binary under both the native and
+    # the Swift Build engines; per-arch output folders exist only in the former.
+    build_args+=(--arch arm64 --arch x86_64)
+fi
+if ! swift build -Xswiftc -warnings-as-errors "${build_args[@]}"; then
+    if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p 2>/dev/null)" == */CommandLineTools ]]; then
+        echo "hint: the active developer directory is the Command Line Tools, which lack the SwiftUI macro plugin newer SDKs need." >&2
+        echo "hint: install Xcode and run 'sudo xcode-select -s /Applications/Xcode.app', or prefix this script with DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer." >&2
+    fi
+    exit 1
+fi
+cp "$(swift build "${build_args[@]}" --show-bin-path)/CopyTaste" "$app/Contents/MacOS/CopyTaste"
+if [[ "${1:-}" == "--universal" ]]; then
+    for arch in arm64 x86_64; do lipo "$app/Contents/MacOS/CopyTaste" -verify_arch "$arch"; done
 fi
 cp Resources/Info.plist "$app/Contents/Info.plist"
 if [[ -n "${COPYTASTE_SIGN_IDENTITY:-}" && "${COPYTASTE_SIGN_IDENTITY:-}" != "-" ]]; then
